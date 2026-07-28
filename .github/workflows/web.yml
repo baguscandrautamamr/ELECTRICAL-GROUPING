@@ -1,0 +1,47 @@
+name: Web
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'web/**'
+      - '.github/workflows/web.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  check:
+    name: Lint, typecheck, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # pnpm datang dari field packageManager di package.json, jadi versinya
+      # sama dengan yang dipakai di mesin lokal.
+      - run: corepack enable
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      - run: pnpm typecheck
+
+      # Build memakai nilai bawaan di lib/supabase/config.ts, jadi tidak ada
+      # secret yang dibutuhkan di sini. Deploy sungguhan tetap lewat Vercel.
+      - run: pnpm build

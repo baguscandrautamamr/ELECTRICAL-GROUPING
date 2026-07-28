@@ -1,0 +1,146 @@
+{
+  "app": {
+    "name": "CircuitSync",
+    "tagline": "Group Revit electrical devices into circuits, then queue them for Revit."
+  },
+  "nav": {
+    "projects": "Projects",
+    "signOut": "Sign out",
+    "backToProject": "Back to project",
+    "backToProjects": "Back to projects"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "locale": {
+    "label": "Language",
+    "id": "Indonesia",
+    "en": "English"
+  },
+  "auth": {
+    "heading": "Sign in to CircuitSync",
+    "subheading": "Use your work email. We send a sign-in link, or you can use a password.",
+    "email": "Email",
+    "password": "Password",
+    "modeLink": "Email link",
+    "modePassword": "Password",
+    "sendLink": "Send sign-in link",
+    "signIn": "Sign in",
+    "signUp": "Create account",
+    "linkSent": "Sign-in link sent to {email}. Open it on this device so the session carries over.",
+    "signUpSent": "Confirmation email sent to {email}. Open the link to activate the account.",
+    "needEmail": "Enter an email first",
+    "needPassword": "Enter a password first",
+    "wrongCredentials": "That email and password do not match",
+    "rateLimited": "Too many attempts. Wait a moment, then try again.",
+    "generic": "Sign-in could not be completed. Check the email and password, then try again.",
+    "callbackFailed": "That link has expired or was already used. Ask for a new one."
+  },
+  "projects": {
+    "heading": "Projects",
+    "subheading": "One project stands for one Revit model.",
+    "newName": "Project name",
+    "create": "Create project",
+    "created": "Project {name} created",
+    "needName": "Enter a project name first",
+    "emptyTitle": "No projects on this account yet.",
+    "emptyBody": "Create one here, then bind it from the Revit add-in. You can also create it from the add-in.",
+    "openedAt": "Updated {when}",
+    "deviceCount": "{count, plural, one {# device} other {# devices}}",
+    "open": "Open"
+  },
+  "project": {
+    "levels": "Levels",
+    "levelsSubheading": "Pick a level and a device kind to start grouping.",
+    "panels": "Panels",
+    "panelsUsable": "Usable",
+    "panelsUnusable": "Not usable yet",
+    "panelsUnusableReason": "This panel still has no distribution system in Revit. Fill it in there, then push the model again.",
+    "slots": "{used} of {total} slots",
+    "slotsUnknown": "Slot count unknown",
+    "emptyTitle": "This model has never been pushed to the cloud.",
+    "emptyBody": "Open the CircuitSync add-in in Revit, bind the document to this project, then choose “Push model to cloud”.",
+    "lighting": "Lighting",
+    "receptacle": "Receptacles",
+    "deviceSummary": "{lighting} lighting · {receptacle} receptacles"
+  },
+  "plan": {
+    "heading": "{level} · {kind}",
+    "selected": "{count, plural, =0 {Nothing selected} one {# point selected} other {# points selected}}",
+    "clear": "Clear selection",
+    "selectAllUnwired": "Select everything not circuited",
+    "legend": "Legend",
+    "families": "Symbol per family",
+    "totalLoad": "Selected load: {va} VA",
+    "missingLoad": "{count} points without a VA value",
+    "emptyTitle": "No devices on this level yet.",
+    "emptyBody": "Push the model again from the add-in if the level does have devices.",
+    "hint": "Click a point to select it. Drag on empty space to select several at once."
+  },
+  "circuits": {
+    "heading": "Circuits",
+    "draft": "Proposed",
+    "queued": "Waiting for Revit",
+    "applied": "Applied",
+    "failed": "Failed",
+    "panel": "Target panel",
+    "choosePanel": "Pick a panel",
+    "create": "Create circuit from selection",
+    "created": "Circuit created as a proposal",
+    "needSelection": "Select some points first",
+    "needPanel": "Pick a target panel first",
+    "noUsablePanel": "No usable panel yet. Fill in the panel distribution system in Revit, then push the model again.",
+    "deviceCount": "{count, plural, one {# point} other {# points}}",
+    "load": "{va} VA",
+    "numberPending": "Number comes from Revit",
+    "number": "Number {number}",
+    "remove": "Remove proposal",
+    "removed": "Proposal removed",
+    "send": "Send to Revit",
+    "sent": "Sent to the queue",
+    "nothingToSend": "Nothing to send yet",
+    "queuedNote": "The add-in picks it up when the model is open in Revit.",
+    "emptyTitle": "No circuits on this level yet.",
+    "emptyBody": "Select some points to start.",
+    "errorPrefix": "Rejected by Revit"
+  },
+  "status": {
+    "unwired": "Not circuited",
+    "no_panel": "No panel",
+    "connected": "Connected",
+    "no_connector": "No connector",
+    "unwiredHint": "Ready to group",
+    "no_panelHint": "On a circuit, panel not chosen",
+    "connectedHint": "Circuit and panel filled in",
+    "no_connectorHint": "Has no electrical connector, cannot be selected"
+  },
+  "errors": {
+    "unknown": "The change was not saved. Try again.",
+    "notFound": "That page does not exist.",
+    "notFoundBody": "The link may have changed. Go back to the project list.",
+    "noAccess": "That project does not belong to this account."
+  },
+  "revitErrors": {
+    "plan": {
+      "empty_circuit": "The circuit has no devices",
+      "unknown_panel": "That panel no longer exists in the model",
+      "panel_not_usable": "The panel has no distribution system in Revit",
+      "unknown_device": "A device was deleted from the model",
+      "device_without_connector": "A device has no electrical connector",
+      "kind_mismatch": "The device kind does not match the circuit",
+      "device_in_two_circuits": "A device is used in two circuits",
+      "already_connected": "A device is already on another circuit"
+    },
+    "apply": {
+      "panel_missing": "The target panel no longer exists in the model",
+      "panel_not_equipment": "The target panel is no longer electrical equipment",
+      "no_devices": "Every device on this circuit was deleted from the model",
+      "create_failed": "Revit could not create this circuit",
+      "panel_rejected": "Revit refused the connection to that panel"
+    },
+    "no_circuit_applied": "Not one circuit could be applied",
+    "plan_rejected": "The whole plan was rejected before it was applied"
+  }
+}

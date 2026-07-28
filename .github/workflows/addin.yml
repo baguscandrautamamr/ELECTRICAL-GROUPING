@@ -1,0 +1,130 @@
+name: Add-in Revit 2025
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    paths:
+      - 'addin/**'
+      - '.github/workflows/addin.yml'
+  pull_request:
+    paths:
+      - 'addin/**'
+      - '.github/workflows/addin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: addin
+
+jobs:
+  # Test Core dijalankan di Linux karena bisa: lapisan itu C# murni tanpa
+  # ketergantungan Windows. Kalau job ini gagal build, artinya ada yang
+  # menyeret RevitAPI atau API Windows masuk ke Core.
+  core:
+    name: Test Core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - run: dotnet test tests/CircuitSync.Core.Tests --configuration Release
+
+  package:
+    name: Build dan bungkus ZIP
+    runs-on: windows-latest
+    outputs:
+      zip-name: ${{ steps.pack.outputs.zip-name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      # Warning diperlakukan sebagai error di CI supaya "build bersih tanpa
+      # warning baru" bukan sekadar niat baik.
+      - name: Build
+        run: dotnet build --configuration Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test tests/CircuitSync.Core.Tests --configuration Release --no-build
+
+      - name: Susun isi paket
+        id: pack
+        shell: pwsh
+        run: |
+          $version = '1.0.0'
+          $stamp = if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $env:GITHUB_REF -replace '^refs/tags/v', ''
+          } else {
+            "$version-build.$env:GITHUB_RUN_NUMBER"
+          }
+          $name = "CircuitSync-Revit2025-$stamp"
+
+          $stage = Join-Path $env:RUNNER_TEMP $name
+          $payload = Join-Path $stage 'CircuitSync'
+          New-Item -ItemType Directory -Path $payload -Force | Out-Null
+
+          # Hanya DLL milik kita. Reference assembly Revit sengaja tidak ikut
+          # (ExcludeAssets=runtime) karena saat jalan yang dipakai DLL instalasi Revit.
+          $out = 'src/CircuitSync.Ui/bin/Release/net8.0-windows'
+          Copy-Item "$out/CircuitSync*.dll" $payload
+          Copy-Item "$out/System.Security.Cryptography.ProtectedData.dll" $payload -ErrorAction SilentlyContinue
+
+          Copy-Item 'installer/CircuitSync.addin' $stage
+          Copy-Item 'installer/Install.ps1' $stage
+          Copy-Item 'installer/INSTALL.md' $stage
+
+          # Folder bernama ikut masuk ZIP, supaya isinya tidak berhamburan
+          # di tempat user mengekstrak.
+          $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
+          Compress-Archive -Path $stage -DestinationPath $zip -Force
+
+          "zip-name=$name" >> $env:GITHUB_OUTPUT
+          "zip-path=$zip"  >> $env:GITHUB_OUTPUT
+
+          Write-Host 'Isi paket:'
+          Get-ChildItem $stage -Recurse | Select-Object -ExpandProperty FullName
+
+      - name: Unggah ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.zip-name }}
+          path: ${{ steps.pack.outputs.zip-path }}
+          if-no-files-found: error
+          retention-days: 90
+
+  release:
+    name: Lampirkan ZIP ke release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ needs.package.outputs.zip-name }}
+          path: dist
+
+      # gh CLI sudah ada di runner; tidak perlu action pihak ketiga hanya untuk ini.
+      - name: Buat release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: .
+        run: |
+          gh release create "${GITHUB_REF#refs/tags/}" dist/*.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "CircuitSync ${GITHUB_REF#refs/tags/}" \
+            --notes "Add-in Revit 2025. Ekstrak ZIP lalu jalankan Install.ps1." \
+            --verify-tag

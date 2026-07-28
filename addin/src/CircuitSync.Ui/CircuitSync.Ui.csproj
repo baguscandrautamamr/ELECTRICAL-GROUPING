@@ -12,6 +12,17 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <AssemblyName>CircuitSync</AssemblyName>
     <RootNamespace>CircuitSync.Ui</RootNamespace>
+
+    <!--
+      Project library tidak menyalin DLL NuGet ke folder output secara default —
+      itu hanya berlaku untuk project executable. Tanpa ini,
+      System.Security.Cryptography.ProtectedData tidak ikut terbungkus dan add-in
+      meledak saat pertama kali menyimpan sesi login, bukan saat build.
+
+      Reference assembly Revit dan WPF tetap tidak ikut: keduanya sudah
+      ExcludeAssets runtime/all.
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>

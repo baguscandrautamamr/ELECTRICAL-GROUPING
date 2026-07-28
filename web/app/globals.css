@@ -1,0 +1,118 @@
+@import 'tailwindcss';
+
+/* next-themes memasang class di <html>, jadi varian dark harus mengikuti class,
+   bukan preferensi sistem. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI', system-ui,
+    'Helvetica Neue', Arial, sans-serif;
+
+  /* Kurva gerak yang dipakai seluruh aplikasi: cepat keluar, mendarat halus. */
+  --ease-soft: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --radius-card: 1rem;
+  --radius-control: 0.625rem;
+}
+
+/*
+  Token warna. Semua komponen memakai nama peran ini, bukan hex mentah — itu yang
+  membuat mode gelap tidak perlu disentuh komponen per komponen.
+*/
+:root {
+  --canvas: #f5f5f7;
+  --surface: #ffffff;
+  --surface-sunken: #f0f0f3;
+  --ink: #1d1d1f;
+  --ink-muted: #6e6e73;
+  --hairline: #d8d8de;
+  --accent: #0071e3;
+  --accent-ink: #ffffff;
+  --ok: #1d8b4b;
+  --warn: #a16c00;
+  --danger: #c0282d;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.12);
+}
+
+.dark {
+  --canvas: #161618;
+  --surface: #1f1f22;
+  --surface-sunken: #2a2a2e;
+  --ink: #f5f5f7;
+  --ink-muted: #9e9ea6;
+  --hairline: #3a3a3e;
+  --accent: #0a84ff;
+  --accent-ink: #ffffff;
+  --ok: #30d158;
+  --warn: #ffd60a;
+  --danger: #ff453a;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--ink-muted);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    letter-spacing: -0.011em;
+  }
+
+  /* Fokus terlihat jelas tapi tidak berteriak, dan tetap kelihatan di kedua mode. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--accent) 25%, transparent);
+  }
+}
+
+@utility card {
+  background-color: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* Header yang menempel di atas, seperti toolbar aplikasi macOS. */
+@utility chrome {
+  background-color: color-mix(in oklab, var(--canvas) 78%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "app": {
+    "name": "CircuitSync",
+    "tagline": "Kelompokkan device kelistrikan Revit jadi circuit, lalu kirim ke antrean."
+  },
+  "nav": {
+    "projects": "Project",
+    "signOut": "Keluar",
+    "backToProject": "Kembali ke project",
+    "backToProjects": "Kembali ke daftar project"
+  },
+  "theme": {
+    "label": "Tema",
+    "light": "Terang",
+    "dark": "Gelap"
+  },
+  "locale": {
+    "label": "Bahasa",
+    "id": "Indonesia",
+    "en": "English"
+  },
+  "auth": {
+    "heading": "Masuk ke CircuitSync",
+    "subheading": "Pakai email kantor Anda. Kami mengirim tautan masuk, atau Anda bisa memakai kata sandi.",
+    "email": "Email",
+    "password": "Kata sandi",
+    "modeLink": "Tautan email",
+    "modePassword": "Kata sandi",
+    "sendLink": "Kirim tautan masuk",
+    "signIn": "Masuk",
+    "signUp": "Buat akun",
+    "linkSent": "Tautan masuk terkirim ke {email}. Buka dari perangkat ini agar sesinya nyambung.",
+    "signUpSent": "Email konfirmasi terkirim ke {email}. Buka tautannya untuk mengaktifkan akun.",
+    "needEmail": "Isi email dulu",
+    "needPassword": "Isi kata sandi dulu",
+    "wrongCredentials": "Email atau kata sandi tidak cocok",
+    "rateLimited": "Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.",
+    "generic": "Masuk tidak bisa diselesaikan. Periksa email dan kata sandi lalu coba lagi.",
+    "callbackFailed": "Tautan itu sudah kedaluwarsa atau pernah dipakai. Minta tautan baru."
+  },
+  "projects": {
+    "heading": "Project",
+    "subheading": "Satu project mewakili satu model Revit.",
+    "newName": "Nama project",
+    "create": "Buat project",
+    "created": "Project {name} dibuat",
+    "needName": "Isi nama project dulu",
+    "emptyTitle": "Belum ada project di akun ini.",
+    "emptyBody": "Buat satu di sini, lalu ikat dari add-in Revit. Bisa juga dibuat langsung dari add-in.",
+    "openedAt": "Diperbarui {when}",
+    "deviceCount": "{count, plural, other {# device}}",
+    "open": "Buka"
+  },
+  "project": {
+    "levels": "Lantai",
+    "levelsSubheading": "Pilih lantai dan jenis device untuk mulai mengelompokkan.",
+    "panels": "Panel",
+    "panelsUsable": "Bisa dipakai",
+    "panelsUnusable": "Belum bisa dipakai",
+    "panelsUnusableReason": "Distribution system di panel ini masih kosong di Revit. Isi dulu di sana, lalu tarik ulang model.",
+    "slots": "{used} dari {total} slot",
+    "slotsUnknown": "Jumlah slot tidak diketahui",
+    "emptyTitle": "Model ini belum pernah ditarik ke cloud.",
+    "emptyBody": "Buka add-in CircuitSync di Revit, ikat dokumen ke project ini, lalu pilih “Tarik model ke cloud”.",
+    "lighting": "Lampu",
+    "receptacle": "Receptacle",
+    "deviceSummary": "{lighting} lampu · {receptacle} receptacle"
+  },
+  "plan": {
+    "heading": "{level} · {kind}",
+    "selected": "{count, plural, =0 {Belum ada titik dipilih} other {# titik dipilih}}",
+    "clear": "Kosongkan pilihan",
+    "selectAllUnwired": "Pilih semua yang belum di-circuit",
+    "legend": "Keterangan",
+    "families": "Simbol per family",
+    "totalLoad": "Beban terpilih: {va} VA",
+    "missingLoad": "{count} titik tanpa nilai VA",
+    "emptyTitle": "Belum ada device di lantai ini.",
+    "emptyBody": "Tarik ulang model dari add-in kalau lantainya memang berisi.",
+    "hint": "Klik titik untuk memilih. Tarik di area kosong untuk memilih beberapa sekaligus."
+  },
+  "circuits": {
+    "heading": "Circuit",
+    "draft": "Usulan",
+    "queued": "Menunggu Revit",
+    "applied": "Diterapkan",
+    "failed": "Gagal",
+    "panel": "Panel tujuan",
+    "choosePanel": "Pilih panel",
+    "create": "Buat circuit dari pilihan",
+    "created": "Circuit dibuat sebagai usulan",
+    "needSelection": "Pilih beberapa titik dulu",
+    "needPanel": "Pilih panel tujuan dulu",
+    "noUsablePanel": "Belum ada panel yang bisa dipakai. Isi distribution system panel di Revit lalu tarik ulang model.",
+    "deviceCount": "{count, plural, other {# titik}}",
+    "load": "{va} VA",
+    "numberPending": "Nomor menyusul dari Revit",
+    "number": "Nomor {number}",
+    "remove": "Hapus usulan",
+    "removed": "Usulan dihapus",
+    "send": "Kirim ke Revit",
+    "sent": "Terkirim ke antrean",
+    "nothingToSend": "Belum ada usulan yang bisa dikirim",
+    "queuedNote": "Add-in akan mengambilnya saat model dibuka di Revit.",
+    "emptyTitle": "Belum ada circuit di lantai ini.",
+    "emptyBody": "Pilih beberapa titik untuk mulai.",
+    "errorPrefix": "Ditolak Revit"
+  },
+  "status": {
+    "unwired": "Belum di-circuit",
+    "no_panel": "Panel kosong",
+    "connected": "Tersambung",
+    "no_connector": "Tanpa connector",
+    "unwiredHint": "Siap dikelompokkan",
+    "no_panelHint": "Circuit ada, panel belum dipilih",
+    "connectedHint": "Circuit dan panel terisi",
+    "no_connectorHint": "Tidak punya connector listrik, tidak bisa dipilih"
+  },
+  "errors": {
+    "unknown": "Perubahan tidak tersimpan. Coba lagi.",
+    "notFound": "Halaman itu tidak ada.",
+    "notFoundBody": "Tautannya mungkin sudah berubah. Kembali ke daftar project.",
+    "noAccess": "Project itu bukan milik akun ini."
+  },
+  "revitErrors": {
+    "plan": {
+      "empty_circuit": "Circuit tidak punya device",
+      "unknown_panel": "Panel sudah tidak ada di model",
+      "panel_not_usable": "Panel belum punya distribution system di Revit",
+      "unknown_device": "Ada device yang sudah dihapus dari model",
+      "device_without_connector": "Ada device tanpa connector listrik",
+      "kind_mismatch": "Jenis device tidak cocok dengan circuit",
+      "device_in_two_circuits": "Ada device yang dipakai di dua circuit",
+      "already_connected": "Ada device yang sudah tersambung ke circuit lain"
+    },
+    "apply": {
+      "panel_missing": "Panel tujuan sudah tidak ada di model",
+      "panel_not_equipment": "Panel tujuan bukan electrical equipment lagi",
+      "no_devices": "Semua device di circuit ini sudah dihapus dari model",
+      "create_failed": "Revit tidak bisa membuat circuit ini",
+      "panel_rejected": "Revit menolak sambungan ke panel itu"
+    },
+    "no_circuit_applied": "Tidak ada satu pun circuit yang bisa diterapkan",
+    "plan_rejected": "Seluruh rencana ditolak sebelum diterapkan"
+  }
+}

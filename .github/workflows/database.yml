@@ -1,0 +1,61 @@
+name: Database
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/database.yml'
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/database.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Migrasi dan uji RLS
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: circuitsync
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Siapkan database kosong
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+          createdb "$PGDATABASE"
+
+      # harness.sql meniru bagian skema auth Supabase yang dipakai migrasi.
+      # Isi supabase/migrations dijalankan apa adanya, urut nama file.
+      - name: Terapkan migrasi
+        run: |
+          psql -v ON_ERROR_STOP=1 -q -f supabase/tests/harness.sql
+          for file in supabase/migrations/*.sql; do
+            echo "-> $file"
+            psql -v ON_ERROR_STOP=1 -q -f "$file"
+          done
+
+      - name: Uji isolasi antar project
+        run: psql -v ON_ERROR_STOP=1 -q -f supabase/tests/smoke.sql
