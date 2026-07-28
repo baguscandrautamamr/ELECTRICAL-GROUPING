@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    C# murni. Tidak boleh referensi RevitAPI, tidak boleh referensi apa pun
+    yang khusus Windows — supaya testnya bisa jalan di runner Linux.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CircuitSync.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

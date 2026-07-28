@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Semua kode yang menyentuh Revit API. Lapisan ini menerjemahkan, tidak memutuskan:
+    keputusan ada di Core, komunikasi di Cloud.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>CircuitSync.Revit</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircuitSync.Core\CircuitSync.Core.csproj" />
+    <ProjectReference Include="..\CircuitSync.Cloud\CircuitSync.Cloud.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Reference assembly Revit dari NuGet. ExcludeAssets=runtime + PrivateAssets=all
+      adalah bentuk "Private=false": DLL Revit tidak boleh ikut ter-copy ke folder
+      output, karena yang dipakai saat jalan adalah DLL milik instalasi Revit.
+    -->
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitApiPackageVersion)"
+                     PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitApiPackageVersion)"
+                     PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CircuitSync</Name>
+    <!-- Relatif terhadap folder Addins tempat file .addin ini berada. -->
+    <Assembly>CircuitSync\CircuitSync.dll</Assembly>
+    <AddInId>8b3c5e14-7a92-4d63-9f0b-2c4e8d17a536</AddInId>
+    <FullClassName>CircuitSync.Ui.CircuitSyncApp</FullClassName>
+    <!-- Harus sama dengan DocumentProjectBinding.VendorId, kalau tidak Extensible
+         Storage akan menolak penulisan GUID project ke dokumen. -->
+    <VendorId>CSYN</VendorId>
+    <VendorDescription>CircuitSync — grouping circuit Revit ke Supabase</VendorDescription>
+  </AddIn>
+</RevitAddIns>

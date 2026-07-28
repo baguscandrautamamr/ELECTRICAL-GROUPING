@@ -1,0 +1,22 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>12</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Wajib supaya net8.0-windows bisa di-build dari Linux (CI web session, agent). -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <Version>1.0.0</Version>
+    <Product>CircuitSync</Product>
+    <Authors>CircuitSync</Authors>
+
+    <!-- Versi Revit yang dituju. Ganti di satu tempat ini kalau naik versi. -->
+    <RevitVersion>2025</RevitVersion>
+    <RevitApiPackageVersion>2025.4.50</RevitApiPackageVersion>
+  </PropertyGroup>
+
+</Project>

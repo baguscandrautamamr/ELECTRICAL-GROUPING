@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Alat verifikasi Revit API. Bukan bagian dari add-in yang dikirim.
+    Membaca reference assembly Revit lewat refleksi metadata, jadi bisa jalan di
+    Linux tanpa Revit terpasang.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CircuitSync.ApiProbe</RootNamespace>
+    <AssemblyName>ApiProbe</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Reflection.MetadataLoadContext" Version="8.0.1" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitApiPackageVersion)"
+                     GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitApiPackageVersion)"
+                     GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    Path ke reference assembly hanya diketahui MSBuild, bukan kode. Menuliskannya ke
+    file di samping binary jauh lebih tahan banting daripada menebak layout folder
+    cache NuGet di dalam kode.
+  -->
+  <Target Name="WriteRevitRefPaths" AfterTargets="Build">
+    <WriteLinesToFile
+        File="$(OutputPath)revit-refs.txt"
+        Lines="$(PkgNice3point_Revit_Api_RevitAPI)/ref/net8.0-windows7.0/RevitAPI.dll;$(PkgNice3point_Revit_Api_RevitAPIUI)/ref/net8.0-windows7.0/RevitAPIUI.dll"
+        Overwrite="true"
+        WriteOnlyWhenDifferent="true" />
+  </Target>
+
+</Project>

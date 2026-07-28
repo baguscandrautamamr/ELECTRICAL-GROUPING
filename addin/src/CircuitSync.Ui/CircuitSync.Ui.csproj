@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Composition root add-in: ribbon, command, dan window WPF.
+    AssemblyName sengaja "CircuitSync" karena inilah DLL yang ditunjuk file .addin.
+
+    Catatan penting: UI dibangun dari C#, tanpa XAML. Alasannya di CATATAN.md —
+    singkatnya, XAML butuh SDK WindowsDesktop yang tidak ada di runner Linux, dan
+    kami ingin satu perintah `dotnet build` yang sama jalan di mana pun.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>CircuitSync</AssemblyName>
+    <RootNamespace>CircuitSync.Ui</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircuitSync.Core\CircuitSync.Core.csproj" />
+    <ProjectReference Include="..\CircuitSync.Cloud\CircuitSync.Cloud.csproj" />
+    <ProjectReference Include="..\CircuitSync.Revit\CircuitSync.Revit.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitApiPackageVersion)"
+                     PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitApiPackageVersion)"
+                     PrivateAssets="all" ExcludeAssets="runtime" />
+
+    <!-- Reference assembly WPF dari NuGet, bukan dari SDK WindowsDesktop. -->
+    <PackageReference Include="Microsoft.WindowsDesktop.App.Ref" Version="8.0.29"
+                     GeneratePathProperty="true" ExcludeAssets="all" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="PresentationFramework">
+      <HintPath>$(PkgMicrosoft_WindowsDesktop_App_Ref)/ref/net8.0/PresentationFramework.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PresentationCore">
+      <HintPath>$(PkgMicrosoft_WindowsDesktop_App_Ref)/ref/net8.0/PresentationCore.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="WindowsBase">
+      <HintPath>$(PkgMicrosoft_WindowsDesktop_App_Ref)/ref/net8.0/WindowsBase.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Xaml">
+      <HintPath>$(PkgMicrosoft_WindowsDesktop_App_Ref)/ref/net8.0/System.Xaml.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\ribbon-16.png" />
+    <EmbeddedResource Include="Resources\ribbon-32.png" />
+  </ItemGroup>
+
+</Project>

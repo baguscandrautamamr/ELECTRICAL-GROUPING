@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Klien Supabase. TIDAK BOLEH referensi RevitAPI.
+    net8.0-windows karena DPAPI (ProtectedData) hanya ada di Windows; itulah
+    satu-satunya alasan target ini tidak sama dengan Core.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>CircuitSync.Cloud</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircuitSync.Core\CircuitSync.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pengecualian yang sudah disetujui: DPAPI bukan bagian dari .NET 8 secara default. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>
