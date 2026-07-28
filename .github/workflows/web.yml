@@ -30,11 +30,13 @@ jobs:
       # sama dengan yang dipakai di mesin lokal.
       - run: corepack enable
 
+      # Sengaja tanpa cache: pnpm. setup-node menghitung lokasi store pnpm di
+      # langkah pre, sebelum corepack sempat membuatnya, lalu langkah post gagal
+      # menyimpan cache untuk path yang tidak ada. Install-nya hanya belasan detik;
+      # tidak sebanding dengan job yang merah padahal build-nya hijau.
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 
