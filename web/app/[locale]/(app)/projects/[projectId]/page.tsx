@@ -20,12 +20,13 @@ async function load(projectId: string) {
    * yang sama punya isi berbeda. Satu panggilan untuk seluruh layout: menghitungnya di
    * web berarti satu request per denah, dan halaman ini menyegarkan diri berkala.
    */
-  const [project, layouts, panels, devices, counts] = await Promise.all([
+  const [project, layouts, panels, devices, counts, orphans] = await Promise.all([
     supabase.from('projects').select('id, name, owner_id, created_at, updated_at').eq('id', projectId).maybeSingle(),
     supabase.from('layouts').select('*').eq('project_id', projectId).order('sort_order'),
     supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
     supabase.from('devices').select('kind, level_key').eq('project_id', projectId),
-    supabase.rpc('layout_device_counts', {p_project: projectId})
+    supabase.rpc('layout_device_counts', {p_project: projectId}),
+    supabase.rpc('devices_without_layout', {p_project: projectId})
   ]);
 
   const countRows = (counts.data ?? []) as {layout_unique_id: string; devices: number}[];
@@ -33,7 +34,9 @@ async function load(projectId: string) {
   return {
     // Tanpa ini, database yang belum dimigrasi berakhir sebagai 404: project-nya
     // null bukan karena tidak ada, tapi karena tabelnya belum ada.
-    problem: firstProblem(project.error, layouts.error, panels.error, devices.error, counts.error),
+    problem: firstProblem(
+      project.error, layouts.error, panels.error, devices.error, counts.error, orphans.error
+    ),
     project: project.data as Project | null,
     layouts: (layouts.data ?? []) as Layout[],
     panels: (panels.data ?? []) as Panel[],
@@ -42,7 +45,10 @@ async function load(projectId: string) {
     // keanggotaan; jatuh kembali ke perhitungan per (level, kind).
     counted: countRows.length > 0
       ? new Map(countRows.map((row) => [row.layout_unique_id, Number(row.devices)]))
-      : null
+      : null,
+    // Device yang tidak tampak di denah mana pun. Disebut apa adanya supaya
+    // "jumlahnya kurang" punya petunjuk, bukan sekadar terasa janggal.
+    orphans: countRows.length > 0 ? Number(orphans.data ?? 0) : 0
   };
 }
 
@@ -54,7 +60,7 @@ export async function generateMetadata({params}: Params): Promise<Metadata> {
 
 export default async function ProjectPage({params}: Params) {
   const {projectId} = await params;
-  const {problem, project, layouts, panels, devices, counted} = await load(projectId);
+  const {problem, project, layouts, panels, devices, counted, orphans} = await load(projectId);
 
   if (problem) return <SetupNeeded problem={problem} />;
 
@@ -90,6 +96,8 @@ export default async function ProjectPage({params}: Params) {
       </div>
 
       {devices.length === 0 ? <Empty title={t('emptyTitle')} body={t('emptyBody')} /> : null}
+
+      {orphans > 0 ? <Notice tone="warn">{t('orphanDevices', {count: orphans})}</Notice> : null}
 
       {layouts.length > 0 ? (
         <Card>

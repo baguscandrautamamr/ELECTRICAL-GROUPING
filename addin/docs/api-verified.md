@@ -76,6 +76,7 @@ lewat `tools/ApiProbe` sebelum menggantinya.
 | `RBS_ELEC_PANEL_NUMPHASES_PARAM` | `panel.phase` |
 | `RBS_ELEC_MAX_POLE_BREAKERS` | `panel.slots_total`, hidup di **type** panel |
 | `RBS_ELEC_CIRCUIT_NUMBER` | Parameter yang dibaca family tag |
+| `SCHEDULE_LEVEL_PARAM` | Level family berbasis face, yang tidak punya `LevelId` sendiri |
 
 ## Kategori
 

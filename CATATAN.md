@@ -307,6 +307,35 @@ memuat grant-nya sendiri**, sebaris di sebelah `enable row level security`.
 Uji RLS di `smoke.sql` tidak menangkapnya karena hanya menyentuh tabel dari migrasi
 pertama.
 
+### Level device yang di-host harus disimpulkan
+
+Device yang diletakkan di lantai punya `LevelId` sendiri. Yang di-host di dinding
+atau ceiling sering tidak: family berbasis face menyimpan levelnya di parameter
+`Schedule Level`, dan kadang tidak menyimpannya sama sekali. Dulu semua kasus itu
+jatuh ke `unassigned`, dan karena halaman denah menyaring per level, device tersebut
+**terbaca dari model tapi tidak pernah muncul di web**. Gejalanya persis seperti yang
+dilaporkan: stop kontak lantai terlihat, stop kontak dinding hilang.
+
+`ModelReader.LevelKeyOf` sekarang mencari bertingkat: `LevelId` → level host →
+parameter `Schedule Level` → simpulan dari ketinggian. Langkah terakhir hidup di
+`LevelFinder` di Core, karena ini keputusan yang bisa salah dan karena itu harus bisa
+dites tanpa Revit.
+
+Aturannya "level tertinggi yang masih di bawah titik ini", bukan "elevasi terdekat".
+Saklar di 3.700 mm tetap milik lantai di kakinya; mencari yang terdekat akan memilih
+lantai di atas kepalanya. Toleransi 300 mm ke atas menjaga stop kontak lantai yang
+tertanam sedikit di bawah pelat tetap milik level itu.
+
+Dua penopang di sisi web, supaya kegagalan penyimpulan tidak lagi berarti device
+hilang. Pertama, keanggotaan layout menang atas `level_key` — kalau view Revit bilang
+device itu ada di denah, ia ditampilkan berapa pun levelnya. Kedua, halaman project
+menyebut berapa device yang tidak tampak di denah mana pun lewat
+`devices_without_layout`, jadi "jumlahnya kurang" punya petunjuk alih-alih sekadar
+terasa janggal.
+
+Pengambilan device juga dihalaman sekarang: seribu baris adalah batas potong PostgREST,
+dan tanpa halaman model besar kehilangan titik tanpa error dan tanpa tanda apa pun.
+
 ### Isi denah ditentukan view, bukan pasangan (level, kind)
 
 Satu lantai punya lebih dari satu denah lighting. Di model FG WAREHOUSE ada

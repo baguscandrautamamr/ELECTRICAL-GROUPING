@@ -23,6 +23,39 @@ async function loadLayout(projectId: string, layoutId: string) {
     .maybeSingle();
 }
 
+/** Sekali ambil bisa memuat paling banyak seribu baris di PostgREST. */
+const PAGE = 1000;
+
+/**
+ * Seluruh device satu jenis dalam project, berapa pun jumlahnya.
+ *
+ * Tanpa halaman, model besar terpotong di seribu baris — tanpa error, tanpa tanda,
+ * dan yang terlihat hanyalah denah yang kekurangan titik. Penyaringan per layout
+ * terjadi setelah ini, jadi daftar ini memang harus utuh.
+ */
+async function allDevicesOfKind(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  kind: string
+) {
+  const rows: Device[] = [];
+
+  for (let from = 0; ; from += PAGE) {
+    const {data, error} = await supabase
+      .from('devices')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('kind', kind)
+      .order('revit_unique_id')
+      .range(from, from + PAGE - 1);
+
+    if (error) return {data: null, error};
+
+    rows.push(...((data ?? []) as Device[]));
+    if ((data?.length ?? 0) < PAGE) return {data: rows, error: null};
+  }
+}
+
 export async function generateMetadata({params}: Params): Promise<Metadata> {
   const {projectId, layoutId} = await params;
   const {data} = await loadLayout(projectId, decodeURIComponent(layoutId));
@@ -46,13 +79,7 @@ export default async function PlanPage({params}: Params) {
   // berjenis sama. `layout_devices` yang membedakannya.
   const [project, devices, members, anyMember, panels, circuits, overrides] = await Promise.all([
     supabase.from('projects').select('id, name').eq('id', projectId).maybeSingle(),
-    supabase
-      .from('devices')
-      .select('*')
-      .eq('project_id', projectId)
-      .eq('level_key', layout.level_key)
-      .eq('kind', layout.kind)
-      .order('revit_unique_id'),
+    allDevicesOfKind(supabase, projectId, layout.kind),
     supabase
       .from('layout_devices')
       .select('device_unique_id')
@@ -85,14 +112,20 @@ export default async function PlanPage({params}: Params) {
 
   if (!project.data) notFound();
 
-  const onLevel = (devices.data ?? []) as Device[];
+  const ofKind = (devices.data ?? []) as Device[];
   const memberIds = new Set(
     ((members.data ?? []) as LayoutDevice[]).map((row) => row.device_unique_id)
   );
 
+  /**
+   * Keanggotaan menang atas `level_key`. Level sebuah device tidak selalu bisa
+   * ditentukan Revit — stop kontak yang di-host di dinding sering tidak punya
+   * `LevelId` sendiri — dan menyaring dengannya membuat device seperti itu hilang
+   * dari denah meski jelas terlihat di view-nya.
+   */
   const deviceRows = (anyMember.data ?? []).length > 0
-    ? onLevel.filter((device) => memberIds.has(device.revit_unique_id))
-    : onLevel;
+    ? ofKind.filter((device) => memberIds.has(device.revit_unique_id))
+    : ofKind.filter((device) => device.level_key === layout.level_key);
   const t = await getTranslations('plan');
   const nav = await getTranslations('nav');
 

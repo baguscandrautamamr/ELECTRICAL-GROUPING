@@ -30,6 +30,34 @@ comment on function public.layout_device_counts(uuid) is 'Jumlah device per layo
 revoke all on function public.layout_device_counts(uuid) from public;
 grant execute on function public.layout_device_counts(uuid) to authenticated;
 
+-- Device yang tidak tampak di denah mana pun.
+--
+-- Angka ini ada supaya kehilangan tidak terjadi diam-diam. Device bisa terbaca dari
+-- model tapi tidak muncul di satu pun halaman kerja — karena view Revit-nya menyaring
+-- dia keluar, atau karena denah untuk lantainya memang tidak ada. Tanpa penghitung
+-- ini, satu-satunya gejalanya adalah "jumlahnya kurang" tanpa petunjuk ke mana.
+create or replace function public.devices_without_layout(p_project uuid)
+returns bigint
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select count(*)
+  from public.devices d
+  where d.project_id = p_project
+    and not exists (
+      select 1 from public.layout_devices ld
+      where ld.project_id = d.project_id
+        and ld.device_unique_id = d.revit_unique_id
+    );
+$$;
+
+comment on function public.devices_without_layout(uuid) is 'Berapa device yang tidak tampak di denah mana pun. Nol berarti setiap device punya rumah.';
+
+revoke all on function public.devices_without_layout(uuid) from public;
+grant execute on function public.devices_without_layout(uuid) to authenticated;
+
 -- Menyusul hak yang terlewat untuk `layouts`. Tabel itu lahir setelah migrasi
 -- pertama, sedangkan `grant ... on all tables` di sana hanya berlaku untuk tabel
 -- yang sudah ada saat itu. Di Supabase tertutupi ALTER DEFAULT PRIVILEGES bawaan,
