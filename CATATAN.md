@@ -453,6 +453,39 @@ Konsekuensinya: **kunci baru di sisi C# harus ditambahkan ke kedua file
 terjemahan pada commit yang sama**, kalau tidak yang muncul di layar adalah
 pesan umum, bukan penjelasan yang berguna.
 
+### Memilih titik yang berdesakan
+
+Tiga hal yang berbeda menyamar sebagai satu keluhan "susah memilih titik yang
+bertumpuk", dan masing-masing butuh jawaban sendiri.
+
+**Simbolnya kebesaran.** Jari-jari dulu dihitung dari besar denah
+(`max(lebar, tinggi) / 90`), jadi gudang yang lampunya berjarak rapat mendapat simbol
+yang saling menindih — bukan karena titiknya bertumpuk, tapi karena gambarnya terlalu
+gemuk. Sekarang `densityRadius` memakai persentil ke-20 dari jarak ke tetangga
+terdekat. Persentil bawah, bukan rata-rata: yang harus punya sela adalah baris yang
+paling rapat, dan rata-rata gampang ditarik naik oleh titik terpencil. Perbandingannya
+dibatasi contoh 300 titik, jadi biayanya tidak tumbuh bersama denah.
+
+**Tidak bisa mendekat.** Kanvas sekarang bisa di-zoom dengan scroll dan digeser dengan
+tombol tengah, seperti di Revit. Tinggi viewBox selalu mengikuti lebarnya, jadi
+rasionya tidak pernah berubah — itulah yang menjaga pemetaan layar ke koordinat model
+tetap linear, tanpa perlu memikirkan letterbox. Tetap SVG polos; tidak ada library
+kanvas yang ditambahkan.
+
+**Ada yang benar-benar di titik yang sama.** Zoom tidak menolong dua device di
+koordinat identik. Klik sekarang ditangani di tingkat SVG, bukan per simbol: ia
+mengumpulkan semua yang tersentuh, terdekat lebih dulu, dan klik berikutnya di tempat
+yang sama berpindah ke yang di bawahnya.
+
+Ambang klik dan besar sasaran diukur dalam **piksel layar**, bukan milimeter model.
+Jari-jari simbol mengecil saat denah dilihat utuh, dan ambang yang ikut mengecil
+membuat getaran tangan beberapa piksel terbaca sebagai tarikan seleksi yang tidak
+memilih apa pun.
+
+Listener `wheel` dipasang sendiri lewat `addEventListener` karena React memasangnya
+sebagai passive, dan listener passive tidak boleh memanggil `preventDefault` — tanpa
+itu halaman ikut ter-scroll setiap kali denah di-zoom.
+
 ### Simbol 2D dari hash nama family
 
 Bentuk bawaan tiap `family_key` dihitung dari FNV-1a nama family, bukan dari
