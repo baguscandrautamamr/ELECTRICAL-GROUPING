@@ -1,12 +1,20 @@
-import {ChevronRight, Lightbulb, PlugZap, TriangleAlert} from 'lucide-react';
+import {ChevronRight, Lightbulb, PlugZap} from 'lucide-react';
 import {getTranslations} from 'next-intl/server';
 import type {Metadata} from 'next';
 import {notFound} from 'next/navigation';
 import {AutoRefresh} from '@/components/auto-refresh';
+import {PanelList} from '@/components/panels/panel-list';
+import {UnconnectedDevices} from '@/components/panels/unconnected-devices';
 import {Badge, Card, CardHeader, Empty, Notice} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
 import {type Device, type Layout, type Panel, type Project} from '@/lib/contract';
+import {
+  groupPanelContents,
+  groupUnconnected,
+  type PanelContentRow,
+  type UnconnectedRow
+} from '@/lib/summaries';
 import {firstProblem, optional} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 
@@ -20,18 +28,22 @@ async function load(projectId: string) {
    * yang sama punya isi berbeda. Satu panggilan untuk seluruh layout: menghitungnya di
    * web berarti satu request per denah, dan halaman ini menyegarkan diri berkala.
    */
-  const [project, layouts, panels, devices, counts, orphans] = await Promise.all([
-    supabase.from('projects').select('id, name, owner_id, created_at, updated_at').eq('id', projectId).maybeSingle(),
-    supabase.from('layouts').select('*').eq('project_id', projectId).order('sort_order'),
-    supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
-    supabase.from('devices').select('kind, level_key').eq('project_id', projectId),
-    supabase.rpc('layout_device_counts', {p_project: projectId}),
-    supabase.rpc('devices_without_layout', {p_project: projectId})
-  ]);
+  const [project, layouts, panels, devices, counts, orphans, contents, unconnected, unconnectedTotal] =
+    await Promise.all([
+      supabase.from('projects').select('id, name, owner_id, created_at, updated_at').eq('id', projectId).maybeSingle(),
+      supabase.from('layouts').select('*').eq('project_id', projectId).order('sort_order'),
+      supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
+      supabase.from('devices').select('kind, level_key').eq('project_id', projectId),
+      supabase.rpc('layout_device_counts', {p_project: projectId}),
+      supabase.rpc('devices_without_layout', {p_project: projectId}),
+      supabase.rpc('panel_contents', {p_project: projectId}),
+      supabase.rpc('unconnected_devices', {p_project: projectId}),
+      supabase.rpc('unconnected_total', {p_project: projectId})
+    ]);
 
-  // Dua panggilan ini datang dari migrasi yang lebih baru. Kalau belum diterapkan,
-  // halaman kembali ke perhitungan lama — bukan memasang layar "database belum
-  // disiapkan" di atas database yang sehat.
+  // Panggilan rpc ini datang dari migrasi yang lebih baru. Kalau belum diterapkan,
+  // halaman kembali ke perilaku sebelum fiturnya ada — bukan memasang layar "database
+  // belum disiapkan" di atas database yang sehat.
   const countRows = (optional(counts) ?? []) as {layout_unique_id: string; devices: number}[];
 
   return {
@@ -49,7 +61,10 @@ async function load(projectId: string) {
       : null,
     // Device yang tidak tampak di denah mana pun. Disebut apa adanya supaya
     // "jumlahnya kurang" punya petunjuk, bukan sekadar terasa janggal.
-    orphans: countRows.length > 0 ? Number(optional(orphans) ?? 0) : 0
+    orphans: countRows.length > 0 ? Number(optional(orphans) ?? 0) : 0,
+    contents: groupPanelContents((optional(contents) ?? []) as PanelContentRow[]),
+    unconnected: groupUnconnected((optional(unconnected) ?? []) as UnconnectedRow[]),
+    unconnectedTotal: Number(optional(unconnectedTotal) ?? 0)
   };
 }
 
@@ -61,7 +76,8 @@ export async function generateMetadata({params}: Params): Promise<Metadata> {
 
 export default async function ProjectPage({params}: Params) {
   const {projectId} = await params;
-  const {problem, project, layouts, panels, devices, counted, orphans} = await load(projectId);
+  const {problem, project, layouts, panels, devices, counted, orphans, contents, unconnected, unconnectedTotal} =
+    await load(projectId);
 
   if (problem) return <SetupNeeded problem={problem} />;
 
@@ -70,8 +86,6 @@ export default async function ProjectPage({params}: Params) {
   if (!project) notFound();
 
   const t = await getTranslations('project');
-  const usable = panels.filter((panel) => panel.is_usable);
-  const unusable = panels.filter((panel) => !panel.is_usable);
 
   // Jumlahnya harus sama dengan yang terlihat di view Revit. Pasangan (level, kind)
   // hanya dipakai kalau model ditarik add-in versi lama yang belum mengirim
@@ -128,53 +142,15 @@ export default async function ProjectPage({params}: Params) {
         <Empty title={t('noLayoutsTitle')} body={t('noLayoutsBody')} />
       )}
 
-      {panels.length > 0 ? (
-        <Card>
-          <CardHeader title={t('panels')} />
+      {panels.length > 0 ? <PanelList panels={panels} contents={contents} /> : null}
 
-          <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">
-            {t('panelsUsable')}
-          </p>
-          {usable.length === 0 ? (
-            <p className="text-[13px] text-muted">—</p>
-          ) : (
-            <ul className="divide-y divide-hairline">
-              {usable.map((panel) => (
-                <li key={panel.revit_unique_id} className="flex flex-wrap items-center gap-3 py-2.5">
-                  <p className="text-[14px] font-semibold">{panel.name}</p>
-                  {panel.prefix ? <Badge>{panel.prefix}</Badge> : null}
-                  <p className="text-[12px] text-muted">{panel.distribution_system}</p>
-                  <p className="ml-auto text-[12px] text-muted">
-                    {panel.slots_total
-                      ? t('slots', {used: panel.slots_used ?? 0, total: panel.slots_total})
-                      : t('slotsUnknown')}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {/*
-            Panel yang tidak layak tidak disembunyikan: menghilangkannya tanpa
-            penjelasan membuat user mencari panelnya dan mengira data hilang.
-          */}
-          {unusable.length > 0 ? (
-            <div className="mt-6">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted uppercase">
-                <TriangleAlert className="size-3.5 text-warn" aria-hidden />
-                {t('panelsUnusable')}
-              </p>
-              <Notice tone="warn">{t('panelsUnusableReason')}</Notice>
-              <ul className="mt-2 divide-y divide-hairline">
-                {unusable.map((panel) => (
-                  <li key={panel.revit_unique_id} className="py-2.5 text-[14px] text-muted">
-                    {panel.name}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </Card>
+      {devices.length > 0 ? (
+        <UnconnectedDevices
+          projectId={project.id}
+          groups={unconnected}
+          layouts={layouts}
+          total={unconnectedTotal}
+        />
       ) : null}
     </div>
   );

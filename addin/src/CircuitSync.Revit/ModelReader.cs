@@ -21,12 +21,13 @@ public static class ModelReader
     {
         var levels = ReadLevels(doc);
         var panels = ReadPanels(doc);
+        var panelIds = PanelIdsByName(panels);
         var devices = new List<DeviceRow>();
         var systems = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var (row, systemId) in
-                 ReadDevices(doc, BuiltInCategory.OST_LightingFixtures, DeviceKind.Lighting, levels)
-                     .Concat(ReadDevices(doc, BuiltInCategory.OST_ElectricalFixtures, DeviceKind.Receptacle, levels)))
+                 ReadDevices(doc, BuiltInCategory.OST_LightingFixtures, DeviceKind.Lighting, levels, panelIds)
+                     .Concat(ReadDevices(doc, BuiltInCategory.OST_ElectricalFixtures, DeviceKind.Receptacle, levels, panelIds)))
         {
             devices.Add(row);
             if (systemId is not null)
@@ -248,7 +249,8 @@ public static class ModelReader
     /// kalau belum masuk circuit mana pun.
     /// </summary>
     private static IEnumerable<(DeviceRow Row, string? SystemUniqueId)> ReadDevices(
-        Document doc, BuiltInCategory category, string kind, IReadOnlyList<LevelRow> levels)
+        Document doc, BuiltInCategory category, string kind, IReadOnlyList<LevelRow> levels,
+        IReadOnlyDictionary<string, string?> panelIds)
     {
         var instances = new FilteredElementCollector(doc)
             .OfCategory(category)
@@ -259,7 +261,7 @@ public static class ModelReader
         foreach (var instance in instances)
         {
             var point = PointOf(instance);
-            var (status, circuitNumber, systemUniqueId) = ReadConnection(instance);
+            var (status, circuitNumber, systemUniqueId, panelName) = ReadConnection(instance);
 
             yield return (new DeviceRow
             {
@@ -273,6 +275,7 @@ public static class ModelReader
                 Va = ApparentLoadVa(instance),
                 Status = status,
                 CircuitNumber = circuitNumber,
+                PanelUniqueId = PanelIdOf(panelIds, panelName),
             }, systemUniqueId);
         }
     }
@@ -308,18 +311,18 @@ public static class ModelReader
     /// Empat status koneksi, ditentukan dari model — bukan dari apa yang pernah
     /// dikirim web. Snapshot berikutnya selalu menang.
     /// </summary>
-    private static (string Status, string? CircuitNumber, string? SystemUniqueId) ReadConnection(
-        FamilyInstance instance)
+    private static (string Status, string? CircuitNumber, string? SystemUniqueId, string? PanelName)
+        ReadConnection(FamilyInstance instance)
     {
         if (!HasElectricalConnector(instance))
         {
-            return (DeviceStatus.NoConnector, null, null);
+            return (DeviceStatus.NoConnector, null, null, null);
         }
 
         var systems = instance.MEPModel?.GetElectricalSystems();
         if (systems is null || systems.Count == 0)
         {
-            return (DeviceStatus.Unwired, null, null);
+            return (DeviceStatus.Unwired, null, null, null);
         }
 
         ElectricalSystem? withPanel = null;
@@ -339,13 +342,52 @@ public static class ModelReader
 
         if (withPanel is not null)
         {
-            return (DeviceStatus.Connected, Blank(withPanel.CircuitNumber), withPanel.UniqueId);
+            return (DeviceStatus.Connected, Blank(withPanel.CircuitNumber), withPanel.UniqueId,
+                Blank(withPanel.PanelName));
         }
 
         return withoutPanel is null
-            ? (DeviceStatus.NoPanel, null, null)
-            : (DeviceStatus.NoPanel, Blank(withoutPanel.CircuitNumber), withoutPanel.UniqueId);
+            ? (DeviceStatus.NoPanel, null, null, null)
+            : (DeviceStatus.NoPanel, Blank(withoutPanel.CircuitNumber), withoutPanel.UniqueId, null);
     }
+
+    /// <summary>
+    /// Nama panel → <c>UniqueId</c>-nya, dari panel yang sudah dibaca dokumen ini.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ElectricalSystem"/> hanya menyebut <b>nama</b> panel pemuatnya —
+    /// <c>BaseEquipment</c> tidak ada di Revit 2025, lihat <c>docs/api-verified.md</c> —
+    /// jadi nama itulah satu-satunya jembatan ke baris panel yang dikirim ke web.
+    ///
+    /// Nama yang muncul dua kali dipetakan ke null, bukan ke salah satunya. Revit tidak
+    /// melarang dua panel bernama sama, dan menebak salah satu menghasilkan isi panel
+    /// yang salah tanpa gejala apa pun di layar — lebih baik kolomnya kosong, yang di
+    /// web tampak sebagai "panelnya belum diketahui".
+    /// </remarks>
+    private static Dictionary<string, string?> PanelIdsByName(IReadOnlyList<PanelRow> panels)
+    {
+        var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var panel in panels)
+        {
+            // Dipangkas di kedua sisi jembatan. Sisi pencariannya lewat Blank(), yang
+            // memangkas; kalau sisi ini tidak, nama panel yang di Revit punya spasi di
+            // ujung tidak akan pernah cocok — dan gejalanya cuma kolom panel yang kosong
+            // tanpa alasan yang terlihat.
+            var name = panel.Name.Trim();
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            map[name] = map.ContainsKey(name) ? null : panel.RevitUniqueId;
+        }
+
+        return map;
+    }
+
+    private static string? PanelIdOf(IReadOnlyDictionary<string, string?> panelIds, string? panelName) =>
+        panelName is not null && panelIds.TryGetValue(panelName, out var id) ? id : null;
 
     private static bool HasElectricalConnector(FamilyInstance instance)
     {

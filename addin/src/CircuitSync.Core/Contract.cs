@@ -130,6 +130,17 @@ public sealed record DeviceRow
     [JsonPropertyName("va")] public double? Va { get; init; }
     [JsonPropertyName("status")] public string Status { get; init; } = DeviceStatus.Unwired;
     [JsonPropertyName("circuit_number")] public string? CircuitNumber { get; init; }
+
+    /// <summary>
+    /// <c>UniqueId</c> panel pemuat device ini. Null berarti belum tersambung ke panel.
+    /// </summary>
+    /// <remarks>
+    /// Tanpa kolom ini web hanya bisa menyebut isi panel dari tabel <c>circuits</c>,
+    /// yaitu circuit yang pernah dibuat lewat web. Model sungguhan hampir selalu sudah
+    /// punya circuit yang dibuat langsung di Revit, dan panel yang di Revit penuh jadi
+    /// tampak kosong di web.
+    /// </remarks>
+    [JsonPropertyName("panel_unique_id")] public string? PanelUniqueId { get; init; }
 }
 
 public sealed record PanelRow
@@ -210,6 +221,17 @@ public sealed record DeviceConnection
     public required string RevitUniqueId { get; init; }
     public required string Status { get; init; }
     public string? CircuitNumber { get; init; }
+
+    /// <summary>
+    /// Panel pemuat device setelah apply, atau null kalau device baru saja dilepas.
+    /// </summary>
+    /// <remarks>
+    /// Ikut ditulis di sini — bukan menunggu tarikan model berikutnya — karena di
+    /// antara apply dan tarikan itu web sudah menampilkan device sebagai tersambung.
+    /// Kalau panelnya belum ikut, isi panel di web tertinggal satu langkah dari status
+    /// yang ditampilkannya sendiri.
+    /// </remarks>
+    public string? PanelUniqueId { get; init; }
 }
 
 public sealed record SymbolOverrideRow

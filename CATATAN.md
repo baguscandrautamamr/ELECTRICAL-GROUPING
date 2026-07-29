@@ -532,6 +532,34 @@ Supabase. Urutannya penting — cookie baru ditulis ke response milik next-intl,
 dan saat redirect terjadi cookie itu ikut dibawa. Tanpa itu, user seolah-olah
 keluar sendiri beberapa menit sekali.
 
+### Isi panel dibaca dari model, bukan disimpulkan dari tabel `circuits`
+
+Tabel `circuits` hanya memuat circuit yang pernah dibuat lewat web. Model sungguhan
+hampir selalu sudah punya circuit yang dibuat langsung di Revit, jauh sebelum
+project di web ada, dan circuit seperti itu tidak punya baris di sana sama sekali.
+Kalau isi panel disimpulkan dari tabel itu saja, panel yang di Revit penuh tampak
+kosong di web — jawaban yang bukan sekadar kurang, tapi menyesatkan.
+
+Karena itu ada `devices.panel_unique_id`, diisi add-in dari model. Jalur
+menyimpulkannya dari `circuit_number` sengaja **tidak** diambil: nomor seperti
+`(LC)1` memang berawalan prefix panel, tapi dua panel boleh punya prefix yang sama,
+dan tebakan yang salah di sini menghasilkan angka yang kelihatan masuk akal —
+kesalahan yang paling sulit ketahuan.
+
+`panel_contents` tetap punya jalur cadangan lewat circuit berstatus `applied`,
+supaya model yang belum ditarik ulang add-in versi ini tidak kehilangan apa yang
+sudah dikerjakan dari web. Yang belum ditarik ulang hanya kehilangan circuit yang
+dibuat langsung di Revit.
+
+### Sisa pekerjaan dihitung dua kali, dengan sengaja
+
+`unconnected_devices` memecah per denah, dan satu lampu bisa tampak di dua denah
+sekaligus — denah lighting dan denah emergency. Menjumlahkan barisnya akan
+menghitungnya dua kali, jadi angka di judul kartu datang dari `unconnected_total`
+yang menghitung device, bukan kemunculannya. Dua angka yang berbeda di satu kartu
+terlihat seperti kesalahan; yang sebenarnya salah adalah memakai satu angka untuk
+dua pertanyaan yang berbeda.
+
 ---
 
 ## Alat

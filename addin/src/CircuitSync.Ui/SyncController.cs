@@ -582,6 +582,10 @@ public sealed class SyncController : IDisposable
                         RevitUniqueId = deviceId,
                         Status = DeviceStatus.Unwired,
                         CircuitNumber = null,
+                        // Null ikut ditulis, dan di sini itu justru gunanya: device yang
+                        // dilepas harus kehilangan panelnya juga, bukan tetap terhitung
+                        // sebagai isi panel yang sudah tidak memuatnya.
+                        PanelUniqueId = null,
                     };
                 }
             }

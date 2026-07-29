@@ -80,6 +80,12 @@ export type Device = {
   va: number | null;
   status: DeviceStatus;
   circuit_number: string | null;
+  /**
+   * Panel pemuat device ini, dibaca add-in dari model. Null berarti belum tersambung
+   * ke panel mana pun — atau model terakhir ditarik add-in versi lama, dan isi panel
+   * jatuh ke circuit yang pernah diterapkan lewat web.
+   */
+  panel_unique_id: string | null;
 };
 
 export type Panel = {

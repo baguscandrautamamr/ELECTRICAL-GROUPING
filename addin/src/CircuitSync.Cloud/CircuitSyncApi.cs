@@ -162,32 +162,37 @@ public sealed class CircuitSyncApi(SupabaseClient client)
         }, ct);
 
     /// <summary>
-    /// Memperbarui status dan nomor circuit device setelah apply, supaya denah di web
-    /// berubah warna tanpa menunggu tarikan model berikutnya.
+    /// Memperbarui status, nomor circuit, dan panel device setelah apply, supaya denah
+    /// di web berubah warna tanpa menunggu tarikan model berikutnya.
     /// </summary>
     /// <remarks>
     /// PATCH, bukan upsert. Upsert menulis <b>seluruh</b> kolom yang ada di body, dan
     /// <see cref="DeviceConnection"/> tidak membawa geometri — memakainya sebagai upsert
     /// akan mengosongkan <c>x_mm</c>, <c>y_mm</c>, dan <c>level_key</c> milik device yang
-    /// baru saja di-circuit. PATCH hanya menyentuh dua kolom yang memang berubah.
+    /// baru saja di-circuit. PATCH hanya menyentuh kolom yang memang berubah.
     ///
-    /// Device dikelompokkan per (status, nomor) supaya satu circuit = satu request,
-    /// bukan satu device = satu request.
+    /// Device dikelompokkan per (status, nomor, panel) supaya satu circuit = satu
+    /// request, bukan satu device = satu request. Panel ikut jadi kunci: tanpa itu dua
+    /// circuit bernomor sama di panel berbeda — hal biasa, karena nomor hanya unik di
+    /// dalam satu panel — akan digabung jadi satu PATCH dan salah satunya menulis panel
+    /// yang keliru.
     /// </remarks>
     public async Task UpdateDeviceConnectionsAsync(Guid projectId, IReadOnlyList<DeviceConnection> devices,
         CancellationToken ct = default)
     {
         var groups = devices
-            .GroupBy(d => (d.Status, d.CircuitNumber))
-            .Select(g => (g.Key.Status, g.Key.CircuitNumber, Ids: g.Select(d => d.RevitUniqueId).Distinct().ToList()));
+            .GroupBy(d => (d.Status, d.CircuitNumber, d.PanelUniqueId))
+            .Select(g => (g.Key.Status, g.Key.CircuitNumber, g.Key.PanelUniqueId,
+                Ids: g.Select(d => d.RevitUniqueId).Distinct().ToList()));
 
-        foreach (var (status, circuitNumber, ids) in groups)
+        foreach (var (status, circuitNumber, panelUniqueId, ids) in groups)
         {
             foreach (var chunk in Chunk(ids, 100))
             {
                 await Client.PatchAsync("devices",
                     $"project_id=eq.{projectId}&revit_unique_id=in.({InList(chunk)})",
-                    new { status, circuit_number = circuitNumber }, ct).ConfigureAwait(false);
+                    new { status, circuit_number = circuitNumber, panel_unique_id = panelUniqueId },
+                    ct).ConfigureAwait(false);
             }
         }
     }

@@ -113,7 +113,7 @@ Field ini harus sama persis dengan repo web. Snake case di JSON, PascalCase di C
 
 ```
 device:   revit_unique_id, kind, level_key, room_name, family_key,
-          x_mm, y_mm, va, status, circuit_number
+          x_mm, y_mm, va, status, circuit_number, panel_unique_id
 panel:    revit_unique_id, name, prefix, distribution_system,
           voltage, phase, slots_total, slots_used, is_usable
 circuit:  id, panel_unique_id, kind, device_unique_ids[], circuit_number, status
