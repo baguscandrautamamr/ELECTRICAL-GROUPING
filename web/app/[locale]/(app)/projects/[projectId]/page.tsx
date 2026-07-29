@@ -7,7 +7,7 @@ import {Badge, Card, CardHeader, Empty, Notice} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
 import {type Device, type Layout, type Panel, type Project} from '@/lib/contract';
-import {firstProblem} from '@/lib/supabase/errors';
+import {firstProblem, optional} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 
 type Params = {params: Promise<{projectId: string}>};
@@ -29,14 +29,15 @@ async function load(projectId: string) {
     supabase.rpc('devices_without_layout', {p_project: projectId})
   ]);
 
-  const countRows = (counts.data ?? []) as {layout_unique_id: string; devices: number}[];
+  // Dua panggilan ini datang dari migrasi yang lebih baru. Kalau belum diterapkan,
+  // halaman kembali ke perhitungan lama — bukan memasang layar "database belum
+  // disiapkan" di atas database yang sehat.
+  const countRows = (optional(counts) ?? []) as {layout_unique_id: string; devices: number}[];
 
   return {
     // Tanpa ini, database yang belum dimigrasi berakhir sebagai 404: project-nya
     // null bukan karena tidak ada, tapi karena tabelnya belum ada.
-    problem: firstProblem(
-      project.error, layouts.error, panels.error, devices.error, counts.error, orphans.error
-    ),
+    problem: firstProblem(project.error, layouts.error, panels.error, devices.error),
     project: project.data as Project | null,
     layouts: (layouts.data ?? []) as Layout[],
     panels: (panels.data ?? []) as Panel[],
@@ -48,7 +49,7 @@ async function load(projectId: string) {
       : null,
     // Device yang tidak tampak di denah mana pun. Disebut apa adanya supaya
     // "jumlahnya kurang" punya petunjuk, bukan sekadar terasa janggal.
-    orphans: countRows.length > 0 ? Number(orphans.data ?? 0) : 0
+    orphans: countRows.length > 0 ? Number(optional(orphans) ?? 0) : 0
   };
 }
 
