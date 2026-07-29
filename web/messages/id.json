@@ -71,7 +71,8 @@
     "scale": "1:{scale}",
     "deviceCount": "{count, plural, other {# device}}",
     "noLayoutsTitle": "Belum ada denah yang bisa dibuka.",
-    "noLayoutsBody": "Add-in hanya mengirim view denah yang namanya menyebut lighting atau socket outlet. Periksa nama view di Revit, lalu tarik ulang model."
+    "noLayoutsBody": "Add-in hanya mengirim view denah yang namanya menyebut lighting atau socket outlet. Periksa nama view di Revit, lalu tarik ulang model.",
+    "orphanDevices": "{count, plural, other {# titik tidak tampak di denah mana pun. Biasanya view Revit-nya menyaringnya keluar, atau denah untuk lantainya belum ada.}}"
   },
   "plan": {
     "heading": "{level} · {kind}",

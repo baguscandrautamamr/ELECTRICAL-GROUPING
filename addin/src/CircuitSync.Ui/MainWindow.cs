@@ -38,6 +38,7 @@ public sealed class MainWindow : Window
     private readonly ComboBox _projectPicker;
     private readonly ComboBox _intervalPicker;
     private readonly CheckBox _autoToggle;
+    private readonly CheckBox _pushToggle;
     private readonly CheckBox _tagToggle;
 
     private readonly TextBlock _accountValue;
@@ -140,6 +141,11 @@ public sealed class MainWindow : Window
         _autoToggle.Checked += (_, _) => ApplyPolling();
         _autoToggle.Unchecked += (_, _) => ApplyPolling();
 
+        _pushToggle = _ui.Toggle("action.auto_push");
+        _pushToggle.IsChecked = settings.AutoPush;
+        _pushToggle.Checked += (_, _) => _controller.SetAutoPush(true);
+        _pushToggle.Unchecked += (_, _) => _controller.SetAutoPush(false);
+
         _tagToggle = _ui.Toggle("action.place_tags");
         _tagToggle.IsChecked = settings.PlaceTags;
         _tagToggle.Checked += (_, _) => SaveTagToggle();
@@ -169,6 +175,7 @@ public sealed class MainWindow : Window
             UiKit.Row(8,
                 _ui.Primary("action.push", (_, _) => _controller.PushSnapshot()),
                 _ui.Secondary("action.check", (_, _) => _controller.CheckJobs())),
+            _pushToggle,
             _autoToggle,
             _intervalPicker,
             _tagToggle,

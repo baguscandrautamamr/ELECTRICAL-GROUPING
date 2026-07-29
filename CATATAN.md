@@ -234,6 +234,108 @@ akhirnya berhasil, diam-diam tidak berefek.
 Dijaga oleh `Devices_with_and_without_nulls_carry_the_same_keys` dan
 `Panels_with_and_without_nulls_carry_the_same_keys` di `ContractTests`.
 
+### Model terkirim sendiri, halaman melihat lagi sendiri
+
+Dua arah sinkronisasi punya pemicu yang berbeda, dan dulu hanya satu yang otomatis.
+Arah web → Revit sudah punya polling; arah Revit → web selalu manual, menunggu
+seseorang menekan "Tarik model ke cloud". Akibatnya lampu atau family yang baru
+ditambahkan tidak pernah sampai ke web, dan yang terlihat adalah web yang "tidak
+cocok dengan Revit" — padahal web belum pernah diberi tahu.
+
+Sekarang tiga hal bekerja bersama:
+
+1. `CircuitSyncApp` berlangganan `ControlledApplication.DocumentChanged` dan menandai
+   model kotor. Handler-nya hanya menandai — event itu berjalan pada setiap transaksi
+   Revit, termasuk milik add-in lain.
+2. Detak timer di `SyncController.Tick` mengirim ulang model kalau ada tanda itu, lalu
+   mengambil rencana dari web. Urutannya disengaja: rencana divalidasi terhadap model
+   terbaru, bukan terhadap model yang sudah berubah sejak tarikan terakhir.
+3. `AutoRefresh` di web menarik ulang data halaman secara berkala, dan hanya saat tab
+   benar-benar terlihat.
+
+Penyaringnya penting: `TouchesElectrical` hanya menandai kotor kalau perubahan
+menyentuh lighting fixture, electrical fixture, atau electrical equipment. Memindahkan
+dinding tidak perlu menghasilkan tarikan model seukuran gudang. Perubahan yang memuat
+lebih dari 500 elemen langsung dianggap relevan — memeriksanya satu per satu di thread
+utama Revit lebih mahal daripada satu tarikan yang mungkin sia-sia.
+
+#### Kenapa tidak berat
+
+`ModelReader.Read` berjalan di thread utama Revit: ia memindai seluruh fixture,
+menghitung ruangnya, dan menghitung isi tiap view denah. Menjalankannya tiap detak
+selama user menggambar akan terasa sebagai Revit yang tersendat berkala. Empat rem
+menahannya:
+
+| Rem | Efek |
+| --- | --- |
+| **Jeda tenang** 10 detik | Model harus diam dulu. Tarikan terjadi di sela pekerjaan, bukan di tengahnya. |
+| **Jarak minimum** 60 detik | Sesi panjang yang penuh jeda pendek tidak menghasilkan tarikan beruntun. |
+| **Lewati saat sibuk** | Snapshot model besar bisa lebih lama daripada intervalnya; menumpuknya hanya membuat request saling mendahului. |
+| **Sidik jari** | `ModelSnapshot.Fingerprint()` membandingkan isi terhadap tarikan terakhir yang berhasil. Sama berarti unggahan beserta lima DELETE sapuannya dibatalkan. |
+
+Sidik jari dihitung di luar thread Revit, dan barisnya diurutkan lebih dulu karena
+`FilteredElementCollector` tidak menjamin urutan. Hash-nya dihitung sendiri, bukan
+lewat `string.GetHashCode()`, yang di .NET diacak per proses.
+
+Tanda kotor baru dibersihkan setelah tarikan benar-benar selesai — kegagalan jaringan
+tidak boleh membuat perubahan hilang diam-diam. Tarikan manual selalu jadi, sekalipun
+sidik jarinya sama: user yang menekan tombol berhak melihat sesuatu terjadi, dan itu
+satu-satunya jalan memulihkan cloud yang pernah diubah dari luar.
+
+Di sisi web, yang menanggung sebagian besar pekerjaan adalah kembalinya fokus tab,
+bukan timer. Alur kerja sebenarnya adalah menggambar di Revit lalu berpindah ke
+browser, jadi menyegarkan tepat saat tab kembali terlihat terasa seketika dan tidak
+berongkos apa pun selama tab ditinggalkan. Timer hanya jaring pengaman, dan sengaja
+lambat — 60 detik, atau 5 detik selagi menunggu Revit mengerjakan antrean.
+
+### Hak tabel tidak ikut lahir bersama tabelnya
+
+`init.sql` memberi `grant select, insert, update, delete on all tables in schema
+public to authenticated`. Itu berlaku **sekali, untuk tabel yang ada saat itu** —
+tabel yang lahir di migrasi berikutnya tidak ikut.
+
+Di Supabase kelalaian ini tidak pernah terlihat: project-nya sudah punya
+`ALTER DEFAULT PRIVILEGES` bawaan yang memberi hak otomatis pada tabel baru. Di
+Postgres kosong — termasuk yang dipakai workflow `database` — tidak ada itu, dan
+bedanya muncul sebagai `permission denied for table` yang sama sekali tidak menyebut
+RLS, sehingga mudah disalahartikan sebagai policy yang salah.
+
+`layouts` sempat kehilangan haknya karena ini; disusulkan di migrasi
+`20260729020000`. Aturannya sekarang: **setiap migrasi yang membuat tabel harus
+memuat grant-nya sendiri**, sebaris di sebelah `enable row level security`.
+
+Uji RLS di `smoke.sql` tidak menangkapnya karena hanya menyentuh tabel dari migrasi
+pertama.
+
+### Level device yang di-host harus disimpulkan
+
+Device yang diletakkan di lantai punya `LevelId` sendiri. Yang di-host di dinding
+atau ceiling sering tidak: family berbasis face menyimpan levelnya di parameter
+`Schedule Level`, dan kadang tidak menyimpannya sama sekali. Dulu semua kasus itu
+jatuh ke `unassigned`, dan karena halaman denah menyaring per level, device tersebut
+**terbaca dari model tapi tidak pernah muncul di web**. Gejalanya persis seperti yang
+dilaporkan: stop kontak lantai terlihat, stop kontak dinding hilang.
+
+`ModelReader.LevelKeyOf` sekarang mencari bertingkat: `LevelId` → level host →
+parameter `Schedule Level` → simpulan dari ketinggian. Langkah terakhir hidup di
+`LevelFinder` di Core, karena ini keputusan yang bisa salah dan karena itu harus bisa
+dites tanpa Revit.
+
+Aturannya "level tertinggi yang masih di bawah titik ini", bukan "elevasi terdekat".
+Saklar di 3.700 mm tetap milik lantai di kakinya; mencari yang terdekat akan memilih
+lantai di atas kepalanya. Toleransi 300 mm ke atas menjaga stop kontak lantai yang
+tertanam sedikit di bawah pelat tetap milik level itu.
+
+Dua penopang di sisi web, supaya kegagalan penyimpulan tidak lagi berarti device
+hilang. Pertama, keanggotaan layout menang atas `level_key` — kalau view Revit bilang
+device itu ada di denah, ia ditampilkan berapa pun levelnya. Kedua, halaman project
+menyebut berapa device yang tidak tampak di denah mana pun lewat
+`devices_without_layout`, jadi "jumlahnya kurang" punya petunjuk alih-alih sekadar
+terasa janggal.
+
+Pengambilan device juga dihalaman sekarang: seribu baris adalah batas potong PostgREST,
+dan tanpa halaman model besar kehilangan titik tanpa error dan tanpa tanda apa pun.
+
 ### Isi denah ditentukan view, bukan pasangan (level, kind)
 
 Satu lantai punya lebih dari satu denah lighting. Di model FG WAREHOUSE ada

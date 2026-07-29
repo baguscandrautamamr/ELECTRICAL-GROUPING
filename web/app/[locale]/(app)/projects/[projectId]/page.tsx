@@ -2,6 +2,7 @@ import {ChevronRight, Lightbulb, PlugZap, TriangleAlert} from 'lucide-react';
 import {getTranslations} from 'next-intl/server';
 import type {Metadata} from 'next';
 import {notFound} from 'next/navigation';
+import {AutoRefresh} from '@/components/auto-refresh';
 import {Badge, Card, CardHeader, Empty, Notice} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
@@ -14,47 +15,40 @@ type Params = {params: Promise<{projectId: string}>};
 async function load(projectId: string) {
   const supabase = await createClient();
 
-  const [project, layouts, panels, devices, anyMember] = await Promise.all([
+  /**
+   * Jumlah dihitung per view, bukan per (level, kind) — dua denah lighting di lantai
+   * yang sama punya isi berbeda. Satu panggilan untuk seluruh layout: menghitungnya di
+   * web berarti satu request per denah, dan halaman ini menyegarkan diri berkala.
+   */
+  const [project, layouts, panels, devices, counts, orphans] = await Promise.all([
     supabase.from('projects').select('id, name, owner_id, created_at, updated_at').eq('id', projectId).maybeSingle(),
     supabase.from('layouts').select('*').eq('project_id', projectId).order('sort_order'),
     supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
     supabase.from('devices').select('kind, level_key').eq('project_id', projectId),
-    supabase.from('layout_devices').select('layout_unique_id').eq('project_id', projectId).limit(1)
+    supabase.rpc('layout_device_counts', {p_project: projectId}),
+    supabase.rpc('devices_without_layout', {p_project: projectId})
   ]);
 
-  const layoutRows = (layouts.data ?? []) as Layout[];
-
-  /**
-   * Jumlah dihitung per view, bukan per (level, kind) — dua denah lighting di lantai
-   * yang sama punya isi berbeda. Dihitung lewat `count` di server, bukan dengan
-   * menarik seluruh baris keanggotaan: model besar punya ribuan, dan PostgREST
-   * memotong hasilnya di seribu tanpa memberi tahu.
-   */
-  const counted = (anyMember.data ?? []).length > 0
-    ? new Map(
-        await Promise.all(
-          layoutRows.map(async (layout) => {
-            const {count} = await supabase
-              .from('layout_devices')
-              .select('*', {count: 'exact', head: true})
-              .eq('project_id', projectId)
-              .eq('layout_unique_id', layout.revit_unique_id);
-
-            return [layout.revit_unique_id, count ?? 0] as const;
-          })
-        )
-      )
-    : null;
+  const countRows = (counts.data ?? []) as {layout_unique_id: string; devices: number}[];
 
   return {
     // Tanpa ini, database yang belum dimigrasi berakhir sebagai 404: project-nya
     // null bukan karena tidak ada, tapi karena tabelnya belum ada.
-    problem: firstProblem(project.error, layouts.error, panels.error, devices.error, anyMember.error),
+    problem: firstProblem(
+      project.error, layouts.error, panels.error, devices.error, counts.error, orphans.error
+    ),
     project: project.data as Project | null,
-    layouts: layoutRows,
+    layouts: (layouts.data ?? []) as Layout[],
     panels: (panels.data ?? []) as Panel[],
     devices: (devices.data ?? []) as Pick<Device, 'kind' | 'level_key'>[],
-    counted
+    // Kosong berarti model terakhir ditarik add-in versi lama yang belum mengirim
+    // keanggotaan; jatuh kembali ke perhitungan per (level, kind).
+    counted: countRows.length > 0
+      ? new Map(countRows.map((row) => [row.layout_unique_id, Number(row.devices)]))
+      : null,
+    // Device yang tidak tampak di denah mana pun. Disebut apa adanya supaya
+    // "jumlahnya kurang" punya petunjuk, bukan sekadar terasa janggal.
+    orphans: countRows.length > 0 ? Number(orphans.data ?? 0) : 0
   };
 }
 
@@ -66,7 +60,7 @@ export async function generateMetadata({params}: Params): Promise<Metadata> {
 
 export default async function ProjectPage({params}: Params) {
   const {projectId} = await params;
-  const {problem, project, layouts, panels, devices, counted} = await load(projectId);
+  const {problem, project, layouts, panels, devices, counted, orphans} = await load(projectId);
 
   if (problem) return <SetupNeeded problem={problem} />;
 
@@ -92,12 +86,18 @@ export default async function ProjectPage({params}: Params) {
 
   return (
     <div className="space-y-6">
+      {/* Jumlah titik per denah berubah begitu add-in mengirim ulang model. Lambat
+          saja: yang membuatnya terasa seketika adalah penyegaran saat tab kembali. */}
+      <AutoRefresh seconds={60} />
+
       <div>
         <h1 className="text-[24px] font-semibold tracking-tight">{project.name}</h1>
         <p className="mt-1 text-[13px] text-muted">{t('layoutsSubheading')}</p>
       </div>
 
       {devices.length === 0 ? <Empty title={t('emptyTitle')} body={t('emptyBody')} /> : null}
+
+      {orphans > 0 ? <Notice tone="warn">{t('orphanDevices', {count: orphans})}</Notice> : null}
 
       {layouts.length > 0 ? (
         <Card>

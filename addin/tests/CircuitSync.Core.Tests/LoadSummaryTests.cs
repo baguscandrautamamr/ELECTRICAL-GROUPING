@@ -91,4 +91,72 @@ public class LoadSummaryTests
 
         Assert.Equal(["A::1", "B::1"], snapshot.FamilyKeys);
     }
+
+    // ------------------------------------------------------------------ sidik jari
+
+    private static ModelSnapshot Snapshot(params DeviceRow[] devices) => new() { Devices = devices };
+
+    private static DeviceRow Lamp(string id, double x = 0, string status = DeviceStatus.Unwired) => new()
+    {
+        RevitUniqueId = id,
+        LevelKey = "L1",
+        FamilyKey = "Downlight::18W",
+        XMm = x,
+        Status = status,
+    };
+
+    /// <summary>
+    /// Urutan <c>FilteredElementCollector</c> tidak dijamin. Kalau sidik jari ikut berubah
+    /// karenanya, tarikan otomatis akan mengunggah ulang isi yang sama terus-menerus.
+    /// </summary>
+    [Fact]
+    public void Fingerprint_ignores_row_order()
+    {
+        Assert.Equal(
+            Snapshot(Lamp("a"), Lamp("b")).Fingerprint(),
+            Snapshot(Lamp("b"), Lamp("a")).Fingerprint());
+    }
+
+    [Fact]
+    public void Fingerprint_changes_when_a_device_is_added()
+    {
+        Assert.NotEqual(
+            Snapshot(Lamp("a")).Fingerprint(),
+            Snapshot(Lamp("a"), Lamp("b")).Fingerprint());
+    }
+
+    [Fact]
+    public void Fingerprint_changes_when_a_device_moves()
+    {
+        Assert.NotEqual(
+            Snapshot(Lamp("a")).Fingerprint(),
+            Snapshot(Lamp("a", x: 1200)).Fingerprint());
+    }
+
+    [Fact]
+    public void Fingerprint_changes_when_a_device_gets_connected()
+    {
+        Assert.NotEqual(
+            Snapshot(Lamp("a")).Fingerprint(),
+            Snapshot(Lamp("a", status: DeviceStatus.Connected)).Fingerprint());
+    }
+
+    /// <summary>
+    /// Keanggotaan layout ikut dihitung: menambah lampu ke sebuah denah adalah perubahan,
+    /// sekalipun daftar device-nya sendiri tidak bergeser.
+    /// </summary>
+    [Fact]
+    public void Fingerprint_changes_when_layout_membership_changes()
+    {
+        var devices = new[] { Lamp("a") };
+
+        var before = new ModelSnapshot { Devices = devices };
+        var after = new ModelSnapshot
+        {
+            Devices = devices,
+            LayoutDevices = [new LayoutDeviceRow { LayoutUniqueId = "view-1", DeviceUniqueId = "a" }],
+        };
+
+        Assert.NotEqual(before.Fingerprint(), after.Fingerprint());
+    }
 }

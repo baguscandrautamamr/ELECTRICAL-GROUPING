@@ -24,8 +24,9 @@ public static class ModelReader
         var devices = new List<DeviceRow>();
         var systems = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var (row, systemId) in ReadDevices(doc, BuiltInCategory.OST_LightingFixtures, DeviceKind.Lighting)
-                     .Concat(ReadDevices(doc, BuiltInCategory.OST_ElectricalFixtures, DeviceKind.Receptacle)))
+        foreach (var (row, systemId) in
+                 ReadDevices(doc, BuiltInCategory.OST_LightingFixtures, DeviceKind.Lighting, levels)
+                     .Concat(ReadDevices(doc, BuiltInCategory.OST_ElectricalFixtures, DeviceKind.Receptacle, levels)))
         {
             devices.Add(row);
             if (systemId is not null)
@@ -247,7 +248,7 @@ public static class ModelReader
     /// kalau belum masuk circuit mana pun.
     /// </summary>
     private static IEnumerable<(DeviceRow Row, string? SystemUniqueId)> ReadDevices(
-        Document doc, BuiltInCategory category, string kind)
+        Document doc, BuiltInCategory category, string kind, IReadOnlyList<LevelRow> levels)
     {
         var instances = new FilteredElementCollector(doc)
             .OfCategory(category)
@@ -264,7 +265,7 @@ public static class ModelReader
             {
                 RevitUniqueId = instance.UniqueId,
                 Kind = kind,
-                LevelKey = LevelKeyOf(doc, instance),
+                LevelKey = LevelKeyOf(doc, instance, levels, point),
                 RoomName = RoomNameOf(instance),
                 FamilyKey = FamilyKey.Make(instance.Symbol.Family.Name, instance.Symbol.Name),
                 XMm = point is null ? 0 : Units.ToMillimetersRounded(point.X),
@@ -371,18 +372,44 @@ public static class ModelReader
         return raw is null ? null : Math.Round(Units.ToVoltAmperes(raw.Value), 1);
     }
 
-    private static string LevelKeyOf(Document doc, FamilyInstance instance)
+    /// <summary>
+    /// Level sebuah device, dicari bertingkat sampai ketemu.
+    /// </summary>
+    /// <remarks>
+    /// Device yang diletakkan di lantai punya <c>LevelId</c> sendiri dan berhenti di
+    /// langkah pertama. Yang di-host di dinding atau ceiling sering tidak punya, dan
+    /// dulu langsung jatuh ke <c>unassigned</c> — halaman denah menyaring per level,
+    /// jadi device itu terbaca dari model tapi tidak pernah muncul di web.
+    /// </remarks>
+    private static string LevelKeyOf(Document doc, FamilyInstance instance, IReadOnlyList<LevelRow> levels,
+        XYZ? point)
     {
         if (doc.GetElement(instance.LevelId) is Level level)
         {
             return level.UniqueId;
         }
 
-        // Fixture yang di-host di ceiling sering tidak punya LevelId; levelnya
-        // menempel di host.
+        // Fixture yang di-host di ceiling atau dinding sering tidak punya LevelId;
+        // levelnya menempel di host.
         if (instance.Host is not null && doc.GetElement(instance.Host.LevelId) is Level hostLevel)
         {
             return hostLevel.UniqueId;
+        }
+
+        // Family berbasis face menyimpan levelnya di parameter Schedule Level, bukan di
+        // LevelId — dan host-nya bisa berupa face yang sendirinya tidak berlevel.
+        if (instance.get_Parameter(BuiltInParameter.SCHEDULE_LEVEL_PARAM)?.AsElementId() is { } scheduled &&
+            doc.GetElement(scheduled) is Level scheduledLevel)
+        {
+            return scheduledLevel.UniqueId;
+        }
+
+        // Terakhir: simpulkan dari ketinggiannya. Menebak level yang benar jauh lebih
+        // berguna daripada menyembunyikan device dari denah.
+        if (point is not null &&
+            LevelFinder.KeyFor(levels, Units.ToMillimetersRounded(point.Z)) is { } inferred)
+        {
+            return inferred;
         }
 
         return UnassignedLevelKey;

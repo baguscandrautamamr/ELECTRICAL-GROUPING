@@ -248,6 +248,47 @@ public sealed record ModelSnapshot
     /// <summary>Family yang ditemukan di model, untuk mapping simbol 2D di web.</summary>
     public IReadOnlyList<string> FamilyKeys =>
         Devices.Select(d => d.FamilyKey).Distinct().OrderBy(k => k, StringComparer.Ordinal).ToArray();
+
+    /// <summary>
+    /// Sidik jari isi snapshot. Dua snapshot dengan sidik jari sama tidak perlu dikirim
+    /// dua kali.
+    /// </summary>
+    /// <remarks>
+    /// Tarikan otomatis berjalan berulang selama model dikerjakan, dan sebagian besar
+    /// di antaranya membawa isi yang sama persis — user memindahkan dinding, bukan lampu.
+    /// Membandingkan sidik jari menghemat unggahan beserta sapuan hapusnya.
+    ///
+    /// Barisnya diurutkan lebih dulu karena <c>FilteredElementCollector</c> tidak menjamin
+    /// urutan, dan hash dihitung sendiri karena <see cref="string.GetHashCode()"/> di .NET
+    /// diacak per proses — nilainya tidak bisa dibandingkan antar sesi Revit.
+    /// </remarks>
+    public string Fingerprint()
+    {
+        var hash = 14695981039346656037UL;
+
+        foreach (var part in Rows().Order(StringComparer.Ordinal))
+        {
+            foreach (var c in part)
+            {
+                hash = (hash ^ c) * 1099511628211UL;
+            }
+
+            hash = (hash ^ '\n') * 1099511628211UL;
+        }
+
+        return hash.ToString("x16", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private IEnumerable<string> Rows()
+    {
+        static string Json<T>(T row) => JsonSerializer.Serialize(row, CircuitSyncJson.Options);
+
+        return Levels.Select(Json)
+            .Concat(Layouts.Select(Json))
+            .Concat(Panels.Select(Json))
+            .Concat(Devices.Select(Json))
+            .Concat(LayoutDevices.Select(Json));
+    }
 }
 
 public static class CircuitSyncJson

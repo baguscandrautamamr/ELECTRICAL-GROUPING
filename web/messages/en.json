@@ -71,7 +71,8 @@
     "scale": "1:{scale}",
     "deviceCount": "{count, plural, other {# devices}}",
     "noLayoutsTitle": "No plans to open yet.",
-    "noLayoutsBody": "The add-in only sends plan views whose names mention lighting or socket outlet. Check the view names in Revit, then pull the model again."
+    "noLayoutsBody": "The add-in only sends plan views whose names mention lighting or socket outlet. Check the view names in Revit, then pull the model again.",
+    "orphanDevices": "{count, plural, other {# devices appear on no plan. Usually their Revit view filters them out, or their floor has no plan yet.}}"
   },
   "plan": {
     "heading": "{level} · {kind}",
