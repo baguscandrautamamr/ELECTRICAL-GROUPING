@@ -85,8 +85,11 @@
     "missingLoad": "{count} points without a VA value",
     "emptyTitle": "No devices on this level yet.",
     "emptyBody": "Push the model again from the add-in if the level does have devices.",
-    "hint": "Click a point to select it. Drag on empty space to select several at once.",
-    "scale": "1:{scale}"
+    "hint": "Click a device to select it; click the same spot again to step to the one beneath. Drag across empty space to select several. Scroll to zoom, hold the middle button to pan.",
+    "scale": "1:{scale}",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomFit": "Fit the whole plan"
   },
   "connected": {
     "heading": "Already connected",

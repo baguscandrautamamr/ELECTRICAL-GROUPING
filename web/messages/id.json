@@ -85,8 +85,11 @@
     "missingLoad": "{count} titik tanpa nilai VA",
     "emptyTitle": "Belum ada device di lantai ini.",
     "emptyBody": "Tarik ulang model dari add-in kalau lantainya memang berisi.",
-    "hint": "Klik titik untuk memilih. Tarik di area kosong untuk memilih beberapa sekaligus.",
-    "scale": "1:{scale}"
+    "hint": "Klik titik untuk memilih; klik lagi di tempat yang sama untuk berpindah ke titik di bawahnya. Tarik di area kosong untuk memilih beberapa sekaligus. Scroll untuk zoom, tahan tombol tengah untuk menggeser.",
+    "scale": "1:{scale}",
+    "zoomIn": "Perbesar",
+    "zoomOut": "Perkecil",
+    "zoomFit": "Muat seluruh denah"
   },
   "connected": {
     "heading": "Sudah tersambung",
