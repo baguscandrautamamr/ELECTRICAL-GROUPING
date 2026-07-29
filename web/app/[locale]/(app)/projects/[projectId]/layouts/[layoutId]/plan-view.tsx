@@ -47,12 +47,23 @@ export function PlanView({
   const router = useRouter();
 
   /**
-   * Add-in menulis kunci pesan ke `circuits.error`, bukan teks. Kunci yang tidak
-   * dikenal ditampilkan sebagai pesan umum — bukan kunci mentah, yang tidak berarti
-   * apa pun bagi engineer yang membacanya.
+   * Add-in menulis kunci pesan ke baris pertama `circuits.error`, dan penjelasan
+   * mentah dari Revit di baris berikutnya.
+   *
+   * Kunci yang tidak dikenal ditampilkan sebagai pesan umum — bukan kunci mentah,
+   * yang tidak berarti apa pun bagi engineer yang membacanya. Tapi penjelasan
+   * Revit-nya ikut ditampilkan apa adanya: "ditolak Revit" saja benar dan tidak
+   * berguna, sedangkan kalimat Revit-lah yang membedakan panel penuh dari tegangan
+   * yang tidak cocok.
    */
-  function explainRevit(key: string): string {
-    return revitErrors.has(key) ? revitErrors(key) : errors('unknown');
+  function explainRevit(raw: string): {text: string; detail: string | null} {
+    const [key = '', ...rest] = raw.split('\n');
+    const detail = rest.join(' ').trim();
+
+    return {
+      text: revitErrors.has(key) ? revitErrors(key) : errors('unknown'),
+      detail: detail.length > 0 ? detail : null
+    };
   }
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -236,6 +247,10 @@ export function PlanView({
                   <option key={panel.revit_unique_id} value={panel.revit_unique_id}>
                     {panel.name}
                     {panel.prefix ? ` · ${panel.prefix}` : ''}
+                    {/* Slot ikut disebut: panel yang hampir penuh adalah sebab
+                        penolakan yang paling sering, dan paling mudah dihindari
+                        kalau angkanya terlihat sebelum memilih. */}
+                    {panel.slots_total ? ` · ${panel.slots_used ?? 0}/${panel.slots_total}` : ''}
                   </option>
                 ))}
               </Select>
@@ -358,9 +373,16 @@ export function PlanView({
                         {c('load', {va: Math.round(va)})}
                       </p>
                       {circuit.error ? (
-                        <p className="mt-1 text-[12px] text-danger">
-                          {c('errorPrefix')}: {explainRevit(circuit.error)}
-                        </p>
+                        <>
+                          <p className="mt-1 text-[12px] text-danger">
+                            {c('errorPrefix')}: {explainRevit(circuit.error).text}
+                          </p>
+                          {explainRevit(circuit.error).detail ? (
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
+                              {explainRevit(circuit.error).detail}
+                            </p>
+                          ) : null}
+                        </>
                       ) : null}
                       {circuit.status === 'queued' ? (
                         <p className="mt-1 text-[12px] text-muted">{c('queuedNote')}</p>

@@ -492,7 +492,7 @@ public sealed class SyncController : IDisposable
                 result.Ok ? CircuitStatus.Applied : CircuitStatus.Failed,
                 result.CircuitNumber,
                 result.RevitUniqueId,
-                result.Ok ? result.ErrorDetail : result.ErrorKey).ConfigureAwait(false);
+                result.Ok ? result.ErrorDetail : Explain(result)).ConfigureAwait(false);
 
             if (result.Ok)
             {
@@ -502,7 +502,7 @@ public sealed class SyncController : IDisposable
             }
             else
             {
-                Log(LogKind.Error, "log.apply_failed", result.ErrorKey ?? "");
+                Log(LogKind.Error, "log.apply_failed", result.ErrorDetail ?? result.ErrorKey ?? "");
             }
         }
 
@@ -586,6 +586,22 @@ public sealed class SyncController : IDisposable
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Isi kolom <c>circuits.error</c> saat sebuah circuit gagal: kunci pesan di baris
+    /// pertama, penjelasan mentah dari Revit di baris berikutnya.
+    /// </summary>
+    /// <remarks>
+    /// Kunci saja tidak cukup. "Ditolak Revit" benar tapi tidak berguna — yang
+    /// membedakan panel penuh dari tegangan yang tidak cocok hanya ada di pesan Revit,
+    /// dan dulu pesan itu ditangkap lalu dibuang. Dipisah baris supaya web tetap bisa
+    /// menerjemahkan barisan pertamanya, dan menampilkan sisanya apa adanya.
+    /// </remarks>
+    private static string Explain(CircuitApplyResult result)
+    {
+        var key = result.ErrorKey ?? "";
+        return string.IsNullOrWhiteSpace(result.ErrorDetail) ? key : $"{key}\n{result.ErrorDetail}";
     }
 
     private static IEnumerable<CircuitRow> RejectedCircuits(PlanValidation validation) =>
