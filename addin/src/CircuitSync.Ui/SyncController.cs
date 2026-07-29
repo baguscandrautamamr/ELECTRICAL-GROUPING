@@ -258,10 +258,17 @@ public sealed class SyncController : IDisposable
     // ---------------------------------------------------------------- apply
 
     /// <summary>
-    /// Mengambil satu job dari antrean dan menerapkannya. Tiga lompatan thread:
-    /// baca model (thread Revit) → ambil rencana (jaringan) → apply (thread Revit)
-    /// → tulis balik (jaringan).
+    /// Menerapkan <b>seluruh</b> job apply yang mengantre, satu per satu sampai habis.
     /// </summary>
+    /// <remarks>
+    /// Dulu hanya <c>jobs[0]</c> yang dikerjakan, jadi dua kali "Kirim ke Revit" dari web
+    /// berarti dua kali klik "Ambil rencana" di sini — dan sisanya diam di antrean tanpa
+    /// penjelasan.
+    ///
+    /// Model dibaca ulang untuk setiap job, bukan sekali di awal: job sebelumnya baru saja
+    /// mengubah model, dan memvalidasi job berikutnya terhadap snapshot basi akan menolak
+    /// device yang sebenarnya sah.
+    /// </remarks>
     public void CheckJobs(bool quiet = false)
     {
         if (!EnsureSignedIn(quiet))
@@ -269,76 +276,92 @@ public sealed class SyncController : IDisposable
             return;
         }
 
-        _queue.Post(app =>
+        RunInBackground(async () =>
         {
-            if (!TryContext(app, out var doc, out var projectId, quiet))
+            var projectId = await _queue.PostAsync(app => BoundProjectId(app, quiet)).ConfigureAwait(false);
+            if (projectId is null)
             {
                 return;
             }
 
-            var snapshot = ModelReader.Read(doc);
-            LastSnapshot = snapshot;
-
-            RunInBackground(async () =>
+            var jobs = await _api.FetchQueuedApplyJobsAsync(projectId.Value).ConfigureAwait(false);
+            if (jobs.Count == 0)
             {
-                var jobs = await _api.FetchQueuedApplyJobsAsync(projectId).ConfigureAwait(false);
-                if (jobs.Count == 0)
+                if (!quiet)
                 {
-                    if (!quiet)
-                    {
-                        Log(LogKind.Info, "log.no_job");
-                    }
-
-                    return;
+                    Log(LogKind.Info, "log.no_job");
                 }
 
-                var job = jobs[0];
-                var circuits = await _api.FetchCircuitsAsync(projectId, job.CircuitIds().ToList())
-                    .ConfigureAwait(false);
+                return;
+            }
 
-                var validation = PlanValidator.Validate(circuits, snapshot);
-                foreach (var problem in validation.Problems)
-                {
-                    Log(LogKind.Warn, "log.job_error", problem.MessageKey);
-                }
+            if (jobs.Count > 1)
+            {
+                Log(LogKind.Info, "log.jobs_found", jobs.Count);
+            }
 
-                if (validation.Accepted.Count == 0)
-                {
-                    await FailJobAsync(projectId, job, validation).ConfigureAwait(false);
-                    return;
-                }
-
-                Log(LogKind.Info, "log.job_found", validation.Accepted.Count);
-                ApplyOnRevitThread(projectId, job, validation);
-            });
+            foreach (var job in jobs)
+            {
+                await ApplyJobAsync(projectId.Value, job).ConfigureAwait(false);
+            }
         });
     }
 
-    private void ApplyOnRevitThread(Guid projectId, SyncJobRow job, PlanValidation validation)
+    /// <summary>
+    /// Satu job, empat lompatan thread: baca model (Revit) → ambil rencana (jaringan) →
+    /// apply (Revit) → tulis balik (jaringan).
+    /// </summary>
+    private async Task ApplyJobAsync(Guid projectId, SyncJobRow job)
     {
-        _queue.Post(app =>
+        // Generic ditulis eksplisit: tanpa itu T tersimpul non-nullable dan cabang null
+        // di dalam lambda memicu CS8603, yang di CI diperlakukan sebagai error.
+        var snapshot = await _queue.PostAsync<ModelSnapshot?>(app =>
+            app.ActiveUIDocument?.Document is { } doc ? ModelReader.Read(doc) : null).ConfigureAwait(false);
+
+        if (snapshot is null)
         {
-            var doc = app.ActiveUIDocument?.Document;
-            if (doc is null)
-            {
-                Log(LogKind.Warn, "log.no_document");
-                return;
-            }
+            Log(LogKind.Warn, "log.no_document");
+            return;
+        }
 
-            var options = new ApplyOptions { PlaceTags = _settings.PlaceTags };
-            var results = CircuitApplier.Apply(doc, validation.Accepted, options);
+        LastSnapshot = snapshot;
+        Changed();
 
-            RunInBackground(async () =>
-            {
-                await WriteBackAsync(projectId, job, validation, results).ConfigureAwait(false);
-            });
-        });
+        var circuits = await _api.FetchCircuitsAsync(projectId, job.CircuitIds().ToList()).ConfigureAwait(false);
+
+        var validation = PlanValidator.Validate(circuits, snapshot);
+        foreach (var problem in validation.Problems)
+        {
+            Log(LogKind.Warn, "log.job_error", problem.MessageKey);
+        }
+
+        if (validation.Accepted.Count == 0)
+        {
+            await FailJobAsync(job, validation).ConfigureAwait(false);
+            return;
+        }
+
+        Log(LogKind.Info, "log.job_found", validation.Accepted.Count);
+
+        var options = new ApplyOptions { PlaceTags = _settings.PlaceTags };
+        var results = await _queue.PostAsync<IReadOnlyList<CircuitApplyResult>?>(app =>
+            app.ActiveUIDocument?.Document is { } doc
+                ? CircuitApplier.Apply(doc, validation.Accepted, options)
+                : null).ConfigureAwait(false);
+
+        if (results is null)
+        {
+            Log(LogKind.Warn, "log.no_document");
+            return;
+        }
+
+        await WriteBackAsync(projectId, job, validation, results, snapshot).ConfigureAwait(false);
     }
 
     private async Task WriteBackAsync(Guid projectId, SyncJobRow job, PlanValidation validation,
-        IReadOnlyList<CircuitApplyResult> results)
+        IReadOnlyList<CircuitApplyResult> results, ModelSnapshot snapshot)
     {
-        var devices = new List<DeviceRow>();
+        var devices = new List<DeviceConnection>();
 
         foreach (var result in results)
         {
@@ -352,7 +375,8 @@ public sealed class SyncController : IDisposable
             if (result.Ok)
             {
                 devices.AddRange(result.UpdatedDevices);
-                Log(LogKind.Ok, "log.applied_one", result.CircuitNumber ?? "—", result.UpdatedDevices.Count);
+                Log(LogKind.Ok, result.Rebuilt ? "log.rebuilt_one" : "log.applied_one",
+                    result.CircuitNumber ?? "—", result.UpdatedDevices.Count);
             }
             else
             {
@@ -366,11 +390,22 @@ public sealed class SyncController : IDisposable
                 FirstProblem(validation, rejected.Id)).ConfigureAwait(false);
         }
 
+        // Device yang dikeluarkan dari circuit saat isinya diubah harus kembali merah di
+        // web. Tanpa ini device bekas anggota tetap tampak hijau padahal di model sudah
+        // tidak tersambung ke mana pun.
+        //
+        // Yang sudah masuk circuit lain di job yang sama dikecualikan: satu device bisa
+        // dilepas dari circuit A dan dipakai circuit B sekaligus, dan menulis "unwired"
+        // setelah "connected" akan mengembalikannya jadi merah padahal baru tersambung.
+        var connected = devices.Select(d => d.RevitUniqueId).ToHashSet(StringComparer.Ordinal);
+        devices.AddRange(ReleasedDevices(validation, snapshot, results)
+            .Where(released => !connected.Contains(released.RevitUniqueId)));
+
         if (devices.Count > 0)
         {
             // Status device disegarkan dari model, bukan dari asumsi: nomor circuit
             // yang ditulis di sini berasal dari ElectricalSystem.CircuitNumber.
-            await _api.UpdateDevicesAsync(projectId, devices).ConfigureAwait(false);
+            await _api.UpdateDeviceConnectionsAsync(projectId, devices).ConfigureAwait(false);
         }
 
         var applied = results.Count(r => r.Ok);
@@ -385,7 +420,7 @@ public sealed class SyncController : IDisposable
         }
     }
 
-    private async Task FailJobAsync(Guid projectId, SyncJobRow job, PlanValidation validation)
+    private async Task FailJobAsync(SyncJobRow job, PlanValidation validation)
     {
         foreach (var rejected in RejectedCircuits(validation))
         {
@@ -394,7 +429,41 @@ public sealed class SyncController : IDisposable
         }
 
         await _api.MarkJobFailedAsync(job.Id, "plan_rejected").ConfigureAwait(false);
-        _ = projectId;
+    }
+
+    /// <summary>
+    /// Device yang tadinya anggota circuit yang baru saja dibangun ulang, tapi tidak ikut
+    /// di isi barunya. Keanggotaan lama dibaca dari snapshot sebelum apply — bukan dari
+    /// Revit setelahnya, karena circuit lamanya sudah tidak ada.
+    /// </summary>
+    private static IEnumerable<DeviceConnection> ReleasedDevices(PlanValidation validation, ModelSnapshot snapshot,
+        IReadOnlyList<CircuitApplyResult> results)
+    {
+        var applied = results.Where(r => r.Ok).Select(r => r.CircuitId).ToHashSet();
+
+        foreach (var circuit in validation.Accepted)
+        {
+            if (string.IsNullOrEmpty(circuit.RevitUniqueId) || !applied.Contains(circuit.Id))
+            {
+                continue;
+            }
+
+            var kept = circuit.DeviceUniqueIds.ToHashSet(StringComparer.Ordinal);
+
+            foreach (var (deviceId, systemId) in snapshot.DeviceSystems)
+            {
+                if (string.Equals(systemId, circuit.RevitUniqueId, StringComparison.Ordinal) &&
+                    !kept.Contains(deviceId))
+                {
+                    yield return new DeviceConnection
+                    {
+                        RevitUniqueId = deviceId,
+                        Status = DeviceStatus.Unwired,
+                        CircuitNumber = null,
+                    };
+                }
+            }
+        }
     }
 
     private static IEnumerable<CircuitRow> RejectedCircuits(PlanValidation validation) =>
@@ -408,6 +477,13 @@ public sealed class SyncController : IDisposable
         validation.Problems.First(p => p.CircuitId == circuitId).MessageKey;
 
     // ---------------------------------------------------------------- plumbing
+
+    /// <summary>
+    /// Versi <see cref="TryContext"/> yang hanya mengembalikan project id, untuk alur
+    /// yang membaca dokumennya sendiri di tiap lompatan ke thread Revit.
+    /// </summary>
+    private Guid? BoundProjectId(UIApplication app, bool quiet) =>
+        TryContext(app, out _, out var projectId, quiet) ? projectId : null;
 
     private bool TryContext(UIApplication app, out Document doc, out Guid projectId, bool quiet = false)
     {
@@ -469,6 +545,14 @@ public sealed class SyncController : IDisposable
             catch (CloudException ex)
             {
                 LogCloud(ex);
+            }
+            catch (Exception ex)
+            {
+                // Pekerjaan di thread Revit sekarang dilempar balik ke sini lewat
+                // RevitTaskQueue.PostAsync, bukan ditelan RevitTaskQueue.OnError. Tanpa
+                // jaring ini kegagalannya jadi exception yang tidak pernah diamati:
+                // job berikutnya tidak jalan, dan log tetap kosong.
+                Log(LogKind.Error, "log.apply_failed", ex.Message);
             }
             finally
             {

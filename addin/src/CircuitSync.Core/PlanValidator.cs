@@ -39,6 +39,12 @@ public static class PlanValidator
         {
             var circuitProblems = new List<PlanProblem>();
 
+            // Circuit yang sudah pernah diterapkan membawa UniqueId ElectricalSystem-nya.
+            // Kalau isinya diubah dari web, device di dalamnya tentu berstatus `connected` —
+            // ke circuit ini sendiri. Menolaknya membuat circuit yang sudah jalan tidak
+            // pernah bisa diubah lagi.
+            var rebuilding = string.IsNullOrEmpty(circuit.RevitUniqueId) ? null : circuit.RevitUniqueId;
+
             if (circuit.DeviceUniqueIds.Length == 0)
             {
                 circuitProblems.Add(new PlanProblem(circuit.Id, EmptyCircuit, ""));
@@ -66,7 +72,7 @@ public static class PlanValidator
                     circuitProblems.Add(new PlanProblem(circuit.Id, DeviceWithoutConnector, deviceId));
                 }
 
-                if (device.Status == DeviceStatus.Connected)
+                if (device.Status == DeviceStatus.Connected && !IsMemberOf(snapshot, deviceId, rebuilding))
                 {
                     circuitProblems.Add(new PlanProblem(circuit.Id, AlreadyConnected, deviceId));
                 }
@@ -98,6 +104,14 @@ public static class PlanValidator
 
         return new PlanValidation(accepted, problems);
     }
+
+    /// <summary>
+    /// Benar kalau device ini memang anggota ElectricalSystem yang sedang dibangun ulang.
+    /// </summary>
+    private static bool IsMemberOf(ModelSnapshot snapshot, string deviceId, string? systemUniqueId) =>
+        systemUniqueId is not null &&
+        snapshot.DeviceSystems.TryGetValue(deviceId, out var owner) &&
+        string.Equals(owner, systemUniqueId, StringComparison.Ordinal);
 }
 
 public sealed record PlanValidation(IReadOnlyList<CircuitRow> Accepted, IReadOnlyList<PlanProblem> Problems)

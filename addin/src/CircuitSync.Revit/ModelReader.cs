@@ -22,9 +22,17 @@ public static class ModelReader
         var levels = ReadLevels(doc);
         var panels = ReadPanels(doc);
         var devices = new List<DeviceRow>();
+        var systems = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        devices.AddRange(ReadDevices(doc, BuiltInCategory.OST_LightingFixtures, DeviceKind.Lighting));
-        devices.AddRange(ReadDevices(doc, BuiltInCategory.OST_ElectricalFixtures, DeviceKind.Receptacle));
+        foreach (var (row, systemId) in ReadDevices(doc, BuiltInCategory.OST_LightingFixtures, DeviceKind.Lighting)
+                     .Concat(ReadDevices(doc, BuiltInCategory.OST_ElectricalFixtures, DeviceKind.Receptacle)))
+        {
+            devices.Add(row);
+            if (systemId is not null)
+            {
+                systems[row.RevitUniqueId] = systemId;
+            }
+        }
 
         var used = devices.Select(d => d.LevelKey).ToHashSet(StringComparer.Ordinal);
         if (used.Contains(UnassignedLevelKey) && levels.All(l => l.LevelKey != UnassignedLevelKey))
@@ -44,6 +52,7 @@ public static class ModelReader
             Layouts = ReadLayouts(doc),
             Panels = panels,
             Devices = devices,
+            DeviceSystems = systems,
         };
     }
 
@@ -187,7 +196,12 @@ public static class ModelReader
         return systems?.Count ?? 0;
     }
 
-    private static IEnumerable<DeviceRow> ReadDevices(Document doc, BuiltInCategory category, string kind)
+    /// <summary>
+    /// Tiap device beserta <c>UniqueId</c> ElectricalSystem yang memuatnya, atau null
+    /// kalau belum masuk circuit mana pun.
+    /// </summary>
+    private static IEnumerable<(DeviceRow Row, string? SystemUniqueId)> ReadDevices(
+        Document doc, BuiltInCategory category, string kind)
     {
         var instances = new FilteredElementCollector(doc)
             .OfCategory(category)
@@ -197,11 +211,10 @@ public static class ModelReader
 
         foreach (var instance in instances)
         {
-            var point = (instance.Location as LocationPoint)?.Point;
+            var point = PointOf(instance);
+            var (status, circuitNumber, systemUniqueId) = ReadConnection(instance);
 
-            var (status, circuitNumber) = ReadConnection(instance);
-
-            yield return new DeviceRow
+            yield return (new DeviceRow
             {
                 RevitUniqueId = instance.UniqueId,
                 Kind = kind,
@@ -213,25 +226,53 @@ public static class ModelReader
                 Va = ApparentLoadVa(instance),
                 Status = status,
                 CircuitNumber = circuitNumber,
-            };
+            }, systemUniqueId);
         }
+    }
+
+    /// <summary>
+    /// Titik device di koordinat model.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="LocationPoint"/> tidak selalu ada: fixture yang di-host di face atau
+    /// yang berbasis garis memakai <see cref="LocationCurve"/> atau tidak punya location
+    /// sama sekali. Dulu semuanya jatuh ke 0,0 — di web hasilnya setumpuk titik yang
+    /// menindih satu sama lain di pojok denah. Pusat bounding box adalah jawaban yang
+    /// jauh lebih dekat ke kebenaran daripada titik nol model.
+    /// </remarks>
+    private static XYZ? PointOf(FamilyInstance instance)
+    {
+        if (instance.Location is LocationPoint located)
+        {
+            return located.Point;
+        }
+
+        if (instance.Location is LocationCurve curve)
+        {
+            return curve.Curve.Evaluate(0.5, true);
+        }
+
+        // View null berarti bounding box model, bukan milik satu view tertentu.
+        var box = instance.get_BoundingBox(null);
+        return box is null ? null : box.Min.Add(box.Max).Multiply(0.5);
     }
 
     /// <summary>
     /// Empat status koneksi, ditentukan dari model — bukan dari apa yang pernah
     /// dikirim web. Snapshot berikutnya selalu menang.
     /// </summary>
-    private static (string Status, string? CircuitNumber) ReadConnection(FamilyInstance instance)
+    private static (string Status, string? CircuitNumber, string? SystemUniqueId) ReadConnection(
+        FamilyInstance instance)
     {
         if (!HasElectricalConnector(instance))
         {
-            return (DeviceStatus.NoConnector, null);
+            return (DeviceStatus.NoConnector, null, null);
         }
 
         var systems = instance.MEPModel?.GetElectricalSystems();
         if (systems is null || systems.Count == 0)
         {
-            return (DeviceStatus.Unwired, null);
+            return (DeviceStatus.Unwired, null, null);
         }
 
         ElectricalSystem? withPanel = null;
@@ -251,10 +292,12 @@ public static class ModelReader
 
         if (withPanel is not null)
         {
-            return (DeviceStatus.Connected, Blank(withPanel.CircuitNumber));
+            return (DeviceStatus.Connected, Blank(withPanel.CircuitNumber), withPanel.UniqueId);
         }
 
-        return (DeviceStatus.NoPanel, withoutPanel is null ? null : Blank(withoutPanel.CircuitNumber));
+        return withoutPanel is null
+            ? (DeviceStatus.NoPanel, null, null)
+            : (DeviceStatus.NoPanel, Blank(withoutPanel.CircuitNumber), withoutPanel.UniqueId);
     }
 
     private static bool HasElectricalConnector(FamilyInstance instance)

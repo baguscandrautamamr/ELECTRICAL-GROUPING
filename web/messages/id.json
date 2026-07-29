@@ -121,13 +121,18 @@
     "number": "Nomor {number}",
     "remove": "Hapus usulan",
     "removed": "Usulan dihapus",
-    "send": "Kirim ke Revit",
     "sent": "Terkirim ke antrean",
-    "nothingToSend": "Belum ada usulan yang bisa dikirim",
     "queuedNote": "Add-in akan mengambilnya saat model dibuka di Revit.",
     "emptyTitle": "Belum ada circuit di lantai ini.",
     "emptyBody": "Pilih beberapa titik untuk mulai.",
-    "errorPrefix": "Ditolak Revit"
+    "errorPrefix": "Ditolak Revit",
+    "edit": "Ubah circuit",
+    "editHeading": "Ubah circuit",
+    "editHint": "Titik circuit ini sudah masuk pilihan di denah. Tambah atau kurangi, lalu simpan — {number} dikirim ulang ke Revit dan nomornya bisa berubah karena Revit yang memilih slot.",
+    "saveEdit": "Simpan perubahan",
+    "cancelEdit": "Batal",
+    "updated": "Perubahan tersimpan sebagai usulan",
+    "sendCount": "{count, plural, other {Kirim # ke Revit}}"
   },
   "status": {
     "unwired": "Belum di-circuit",

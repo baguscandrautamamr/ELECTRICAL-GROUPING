@@ -154,13 +154,42 @@ public sealed class CircuitSyncApi(SupabaseClient client)
         }, ct);
 
     /// <summary>
-    /// Memperbarui status dan nomor circuit device setelah apply. Dipakai supaya web
-    /// tidak perlu menunggu snapshot penuh berikutnya untuk berubah warna.
+    /// Memperbarui status dan nomor circuit device setelah apply, supaya denah di web
+    /// berubah warna tanpa menunggu tarikan model berikutnya.
     /// </summary>
-    public Task UpdateDevicesAsync(Guid projectId, IReadOnlyList<DeviceRow> devices, CancellationToken ct = default) =>
-        UpsertBatchedAsync("devices",
-            devices.Select(d => d with { ProjectId = projectId }).ToList(),
-            "project_id,revit_unique_id", ct);
+    /// <remarks>
+    /// PATCH, bukan upsert. Upsert menulis <b>seluruh</b> kolom yang ada di body, dan
+    /// <see cref="DeviceConnection"/> tidak membawa geometri — memakainya sebagai upsert
+    /// akan mengosongkan <c>x_mm</c>, <c>y_mm</c>, dan <c>level_key</c> milik device yang
+    /// baru saja di-circuit. PATCH hanya menyentuh dua kolom yang memang berubah.
+    ///
+    /// Device dikelompokkan per (status, nomor) supaya satu circuit = satu request,
+    /// bukan satu device = satu request.
+    /// </remarks>
+    public async Task UpdateDeviceConnectionsAsync(Guid projectId, IReadOnlyList<DeviceConnection> devices,
+        CancellationToken ct = default)
+    {
+        var groups = devices
+            .GroupBy(d => (d.Status, d.CircuitNumber))
+            .Select(g => (g.Key.Status, g.Key.CircuitNumber, Ids: g.Select(d => d.RevitUniqueId).Distinct().ToList()));
+
+        foreach (var (status, circuitNumber, ids) in groups)
+        {
+            foreach (var chunk in Chunk(ids, 100))
+            {
+                await Client.PatchAsync("devices",
+                    $"project_id=eq.{projectId}&revit_unique_id=in.({InList(chunk)})",
+                    new { status, circuit_number = circuitNumber }, ct).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Daftar untuk operator <c>in.()</c> PostgREST. Tiap nilai dikutip supaya karakter
+    /// apa pun di dalam UniqueId tidak dibaca sebagai pemisah.
+    /// </summary>
+    private static string InList(IEnumerable<string> values) =>
+        string.Join(',', values.Select(v => Uri.EscapeDataString($"\"{v.Replace("\"", "\\\"")}\"")));
 
     // ---------------------------------------------------------------- helpers
 

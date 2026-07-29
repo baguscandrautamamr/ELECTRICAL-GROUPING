@@ -179,6 +179,23 @@ public sealed record SyncJobRow
     }
 }
 
+/// <summary>
+/// Perubahan sempit hasil apply: status koneksi dan nomor circuit satu device.
+/// </summary>
+/// <remarks>
+/// Sengaja <b>bukan</b> <see cref="DeviceRow"/>. Write-back memakai upsert, dan
+/// <see cref="CircuitSyncJson"/> ikut menulis null — jadi mengirim baris penuh yang
+/// hanya terisi status akan menimpa <c>x_mm</c>, <c>y_mm</c>, <c>level_key</c>, dan
+/// <c>family_key</c> di database dengan nilai kosong. Device yang baru saja
+/// di-circuit lalu menumpuk di titik 0,0 atau hilang dari denah.
+/// </remarks>
+public sealed record DeviceConnection
+{
+    public required string RevitUniqueId { get; init; }
+    public required string Status { get; init; }
+    public string? CircuitNumber { get; init; }
+}
+
 public sealed record SymbolOverrideRow
 {
     [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
@@ -195,6 +212,19 @@ public sealed record ModelSnapshot
     public IReadOnlyList<LayoutRow> Layouts { get; init; } = [];
     public IReadOnlyList<PanelRow> Panels { get; init; } = [];
     public IReadOnlyList<DeviceRow> Devices { get; init; } = [];
+
+    /// <summary>
+    /// <c>revit_unique_id</c> device → <c>UniqueId</c> ElectricalSystem yang memuatnya.
+    /// Hanya device berstatus <see cref="DeviceStatus.Connected"/> atau
+    /// <see cref="DeviceStatus.NoPanel"/> yang punya entri.
+    /// </summary>
+    /// <remarks>
+    /// Tidak ikut ke database — ini bukan kolom tabel, melainkan bahan bagi
+    /// <see cref="PlanValidator"/> untuk membedakan "device sudah dipakai circuit lain"
+    /// dari "device memang anggota circuit yang sedang diubah".
+    /// </remarks>
+    public IReadOnlyDictionary<string, string> DeviceSystems { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
 
     /// <summary>Family yang ditemukan di model, untuk mapping simbol 2D di web.</summary>
     public IReadOnlyList<string> FamilyKeys =>

@@ -121,13 +121,18 @@
     "number": "Number {number}",
     "remove": "Remove proposal",
     "removed": "Proposal removed",
-    "send": "Send to Revit",
     "sent": "Sent to the queue",
-    "nothingToSend": "Nothing to send yet",
     "queuedNote": "The add-in picks it up when the model is open in Revit.",
     "emptyTitle": "No circuits on this level yet.",
     "emptyBody": "Select some points to start.",
-    "errorPrefix": "Rejected by Revit"
+    "errorPrefix": "Rejected by Revit",
+    "edit": "Edit circuit",
+    "editHeading": "Edit circuit",
+    "editHint": "This circuit’s devices are already selected on the plan. Add or remove some, then save — {number} goes back to Revit, and the number can change because Revit picks the slot.",
+    "saveEdit": "Save changes",
+    "cancelEdit": "Cancel",
+    "updated": "Changes saved as a proposal",
+    "sendCount": "{count, plural, other {Send # to Revit}}"
   },
   "status": {
     "unwired": "Not circuited",

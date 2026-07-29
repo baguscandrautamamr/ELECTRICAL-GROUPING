@@ -86,7 +86,9 @@ export function ConnectedDevices({
       {total === 0 ? (
         <p className="text-[13px] leading-relaxed text-muted">{t('empty')}</p>
       ) : (
-        <ul className="divide-y divide-hairline">
+        // Satu baris per circuit: denah dengan ratusan titik menghasilkan daftar yang
+        // jauh lebih tinggi daripada denahnya sendiri kalau tidak dibatasi.
+        <ul className="max-h-[22rem] divide-y divide-hairline overflow-y-auto pr-1">
           {groups.fromCircuits.map((group) => (
             <li key={group.key} className="py-2.5 first:pt-0">
               <button

@@ -37,6 +37,25 @@ public class ContractTests
         ], fields);
     }
 
+    /// <summary>
+    /// Write-back setelah apply memakai PATCH, dan PATCH menulis persis kolom yang ada di
+    /// body. Kalau kolom geometri ikut masuk ke sini — misalnya karena seseorang
+    /// menggantinya kembali dengan <see cref="DeviceRow"/> — posisi device di database
+    /// tertimpa nol, dan denah di web berubah jadi setumpuk titik di pojok.
+    /// </summary>
+    [Fact]
+    public void Device_connection_carries_only_the_two_columns_that_change()
+    {
+        var fields = Fields(new DeviceConnection
+        {
+            RevitUniqueId = "abc",
+            Status = DeviceStatus.Connected,
+            CircuitNumber = "(LC)1",
+        });
+
+        AssertSameSet(["revit_unique_id", "status", "circuit_number"], fields);
+    }
+
     [Fact]
     public void Panel_serialises_to_the_agreed_columns()
     {
