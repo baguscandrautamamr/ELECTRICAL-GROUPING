@@ -178,7 +178,7 @@
     "backToLogin": "Back to sign in",
     "link": "Check setup",
     "latestMigration": "Latest migration",
-    "latestMigrationHint": "The layout_devices table is missing. Run 20260729010000_layout_devices.sql then 20260729020000_layout_device_counts.sql in the SQL Editor. The app still works without them, but the emergency/exit plan keeps showing the same contents as the lighting plan."
+    "latestMigrationHint": "The devices.panel_unique_id column is missing. Run 20260729030000_device_panel.sql in the SQL Editor, then push the model again from the add-in. The app still works without it, but panel contents only cover circuits made through the web — circuits made directly in Revit stay invisible."
   },
   "errors": {
     "unknown": "The change was not saved. Try again.",

@@ -373,6 +373,7 @@ public sealed class SyncController : IDisposable
                 _lastPush = (projectId, fingerprint);
                 Interlocked.Exchange(ref _modelDirty, 0);
                 Log(LogKind.Ok, "log.push_done", snapshot.Devices.Count, snapshot.Panels.Count);
+                WarnAboutMissingColumns();
             });
         });
     }
@@ -558,6 +559,24 @@ public sealed class SyncController : IDisposable
     /// di isi barunya. Keanggotaan lama dibaca dari snapshot sebelum apply — bukan dari
     /// Revit setelahnya, karena circuit lamanya sudah tidak ada.
     /// </summary>
+    /// <summary>
+    /// Menyebut kolom yang dibuang karena database belum mengenalnya.
+    /// </summary>
+    /// <remarks>
+    /// Tarikan modelnya berhasil — itu sebabnya barisnya peringatan, bukan kesalahan.
+    /// Tapi fitur yang bergantung pada kolom itu tidak akan jalan di web, dan tanpa baris
+    /// ini satu-satunya gejalanya adalah layar yang isinya kurang tanpa sebab yang
+    /// terlihat. Disebutkan sekali per kolom, bukan sekali per permintaan.
+    /// </remarks>
+    private void WarnAboutMissingColumns()
+    {
+        var missing = _api.Client.MissingColumns;
+        if (missing.Count > 0)
+        {
+            Log(LogKind.Warn, "log.missing_columns", string.Join(", ", missing));
+        }
+    }
+
     private static IEnumerable<DeviceConnection> ReleasedDevices(PlanValidation validation, ModelSnapshot snapshot,
         IReadOnlyList<CircuitApplyResult> results)
     {

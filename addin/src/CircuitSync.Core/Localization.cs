@@ -140,6 +140,7 @@ public static class Translations
         ["log.apply_failed"] = "Circuit gagal diterapkan: {0}",
         ["log.job_error"] = "Rencana ditolak: {0}",
         ["log.network"] = "Cloud tidak bisa dihubungi. Periksa koneksi lalu coba lagi.",
+        ["log.missing_columns"] = "Database belum punya kolom {0}. Bagian itu dilewati; jalankan migrasi terbaru (supabase db push) lalu tarik ulang model.",
 
         ["plan.empty_circuit"] = "Circuit tanpa device",
         ["plan.unknown_panel"] = "Panel sudah tidak ada di model",
@@ -232,6 +233,7 @@ public static class Translations
         ["log.apply_failed"] = "Circuit could not be applied: {0}",
         ["log.job_error"] = "Plan rejected: {0}",
         ["log.network"] = "The cloud is unreachable. Check the connection and try again.",
+        ["log.missing_columns"] = "The database does not have the {0} column yet. That part was skipped; run the latest migration (supabase db push), then push the model again.",
 
         ["plan.empty_circuit"] = "Circuit has no devices",
         ["plan.unknown_panel"] = "That panel no longer exists in the model",
