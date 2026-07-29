@@ -88,6 +88,21 @@ ini benar untuk versi Revit yang tercantum.
 dengan `CircuitSync.addin`. Kalau keduanya tidak cocok, penulisan ditolak saat jalan —
 bukan saat compile.
 
+## View denah
+
+Dipakai untuk membaca layout kerja — lihat `ModelReader.ReadLayouts`.
+
+| Anggota | Catatan |
+| --- | --- |
+| `ViewPlan` | Di-collect lewat `OfClass(typeof(ViewPlan))`. Mencakup floor plan dan ceiling plan. |
+| `View.IsTemplate` | View template ikut ter-collect dan harus dibuang. |
+| `ViewPlan.GenLevel` | `Level`, bisa `null` untuk denah yang tidak terikat level. |
+| `View.Scale` | `int`, penyebut skala: 1:100 → `100`. |
+| `View.CropBoxActive` | `bool`. False berarti crop tidak dipakai; `CropBox` tetap punya nilai tapi tidak berarti. |
+| `View.CropBox` | `BoundingBoxXYZ`. |
+| `BoundingBoxXYZ.Min` / `.Max` / `.Transform` | Min dan Max ada di koordinat kotak, bukan koordinat model. |
+| `Transform.OfPoint(XYZ)` | Memindahkan titik crop ke koordinat model. Tanpa ini denah yang diputar meleset. |
+
 ## Satuan
 
 | Anggota | Catatan |

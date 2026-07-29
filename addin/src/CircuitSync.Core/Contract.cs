@@ -77,6 +77,30 @@ public sealed record LevelRow
     [JsonPropertyName("sort_order")] public int SortOrder { get; init; }
 }
 
+/// <summary>
+/// Cerminan satu view denah Revit. Ini yang jadi halaman kerja di web, menggantikan
+/// pasangan (level, kind) — nama view sudah memuat keduanya, dan hanya view yang
+/// membawa crop region serta skala yang benar.
+/// </summary>
+public sealed record LayoutRow
+{
+    [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
+    [JsonPropertyName("revit_unique_id")] public string RevitUniqueId { get; init; } = "";
+    [JsonPropertyName("name")] public string Name { get; init; } = "";
+    [JsonPropertyName("kind")] public string Kind { get; init; } = DeviceKind.Lighting;
+    [JsonPropertyName("level_key")] public string LevelKey { get; init; } = "";
+
+    /// <summary>Penyebut skala Revit: 1:100 disimpan sebagai 100.</summary>
+    [JsonPropertyName("scale")] public int? Scale { get; init; }
+
+    [JsonPropertyName("crop_min_x_mm")] public double? CropMinXMm { get; init; }
+    [JsonPropertyName("crop_min_y_mm")] public double? CropMinYMm { get; init; }
+    [JsonPropertyName("crop_max_x_mm")] public double? CropMaxXMm { get; init; }
+    [JsonPropertyName("crop_max_y_mm")] public double? CropMaxYMm { get; init; }
+
+    [JsonPropertyName("sort_order")] public int SortOrder { get; init; }
+}
+
 public sealed record DeviceRow
 {
     [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
@@ -168,6 +192,7 @@ public sealed record SymbolOverrideRow
 public sealed record ModelSnapshot
 {
     public IReadOnlyList<LevelRow> Levels { get; init; } = [];
+    public IReadOnlyList<LayoutRow> Layouts { get; init; } = [];
     public IReadOnlyList<PanelRow> Panels { get; init; } = [];
     public IReadOnlyList<DeviceRow> Devices { get; init; } = [];
 
@@ -183,10 +208,24 @@ public static class CircuitSyncJson
     /// Snake case sudah eksplisit lewat atribut; kebijakan di sini menjaga field
     /// baru yang lupa diberi atribut tetap ikut aturan.
     /// </summary>
+    /// <remarks>
+    /// Null <b>ikut ditulis</b>, dan itu disengaja karena dua hal.
+    ///
+    /// Pertama, PostgREST menolak bulk insert yang objeknya tidak sekunci dengan
+    /// <c>400 PGRST102 "All object keys must match"</c>. Kalau null dibuang, device
+    /// yang punya <c>room_name</c> dan yang tidak menghasilkan bentuk objek berbeda
+    /// di dalam satu array, dan seluruh tarikan model gagal — tanpa satu pun baris
+    /// masuk, dan tanpa pesan yang menyebut kolom mana.
+    ///
+    /// Kedua, snapshot adalah pengganti penuh: model Revit yang jadi sumber
+    /// kebenaran untuk kolom-kolom ini. Device yang room-nya dihapus di Revit harus
+    /// menjadi null di database. Membuang null justru membuat nilai lama menetap
+    /// selamanya, dan membuat patch yang bermaksud mengosongkan kolom — seperti
+    /// membersihkan <c>error</c> saat job berhasil — diam-diam tidak berefek.
+    /// </remarks>
     public static readonly JsonSerializerOptions Options = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 }

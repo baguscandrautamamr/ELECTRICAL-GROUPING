@@ -64,7 +64,14 @@
     "emptyBody": "Buka add-in CircuitSync di Revit, ikat dokumen ke project ini, lalu pilih “Tarik model ke cloud”.",
     "lighting": "Lampu",
     "receptacle": "Receptacle",
-    "deviceSummary": "{lighting} lampu · {receptacle} receptacle"
+    "deviceSummary": "{lighting} lampu · {receptacle} receptacle",
+    "layouts": "Denah",
+    "layoutsHint": "Diambil dari view denah Revit yang namanya menyebut lighting atau socket outlet.",
+    "layoutsSubheading": "Pilih denah untuk mulai mengelompokkan.",
+    "scale": "1:{scale}",
+    "deviceCount": "{count, plural, other {# device}}",
+    "noLayoutsTitle": "Belum ada denah yang bisa dibuka.",
+    "noLayoutsBody": "Add-in hanya mengirim view denah yang namanya menyebut lighting atau socket outlet. Periksa nama view di Revit, lalu tarik ulang model."
   },
   "plan": {
     "heading": "{level} · {kind}",
@@ -77,7 +84,23 @@
     "missingLoad": "{count} titik tanpa nilai VA",
     "emptyTitle": "Belum ada device di lantai ini.",
     "emptyBody": "Tarik ulang model dari add-in kalau lantainya memang berisi.",
-    "hint": "Klik titik untuk memilih. Tarik di area kosong untuk memilih beberapa sekaligus."
+    "hint": "Klik titik untuk memilih. Tarik di area kosong untuk memilih beberapa sekaligus.",
+    "scale": "1:{scale}"
+  },
+  "connected": {
+    "heading": "Sudah tersambung",
+    "summary": "{count, plural, other {# device}} sudah masuk circuit dan panel",
+    "empty": "Belum ada yang tersambung di denah ini. Pilih beberapa titik, buat circuit, lalu kirim ke Revit.",
+    "fromRevit": "Sudah tersambung di Revit",
+    "fromRevitHint": "Circuit-nya dibuat langsung di Revit, bukan lewat web"
+  },
+  "browser": {
+    "heading": "System browser",
+    "hint": "Hanya lighting dan receptacle. Arahkan kursor untuk menyorotnya di denah.",
+    "unassigned": "Belum masuk circuit",
+    "power": "Power",
+    "nothingLeft": "Semua device di denah ini sudah masuk circuit.",
+    "noCircuits": "Belum ada circuit di denah ini."
   },
   "circuits": {
     "heading": "Circuit",

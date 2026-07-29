@@ -5,7 +5,7 @@ import {notFound} from 'next/navigation';
 import {Badge, Card, CardHeader, Empty, Notice} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
-import {DEVICE_KINDS, type Device, type Level, type Panel, type Project} from '@/lib/contract';
+import {type Device, type Layout, type Panel, type Project} from '@/lib/contract';
 import {firstProblem} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 
@@ -14,9 +14,9 @@ type Params = {params: Promise<{projectId: string}>};
 async function load(projectId: string) {
   const supabase = await createClient();
 
-  const [project, levels, panels, devices] = await Promise.all([
+  const [project, layouts, panels, devices] = await Promise.all([
     supabase.from('projects').select('id, name, owner_id, created_at, updated_at').eq('id', projectId).maybeSingle(),
-    supabase.from('levels').select('*').eq('project_id', projectId).order('sort_order'),
+    supabase.from('layouts').select('*').eq('project_id', projectId).order('sort_order'),
     supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
     supabase.from('devices').select('kind, level_key').eq('project_id', projectId)
   ]);
@@ -24,9 +24,9 @@ async function load(projectId: string) {
   return {
     // Tanpa ini, database yang belum dimigrasi berakhir sebagai 404: project-nya
     // null bukan karena tidak ada, tapi karena tabelnya belum ada.
-    problem: firstProblem(project.error, levels.error, panels.error, devices.error),
+    problem: firstProblem(project.error, layouts.error, panels.error, devices.error),
     project: project.data as Project | null,
-    levels: (levels.data ?? []) as Level[],
+    layouts: (layouts.data ?? []) as Layout[],
     panels: (panels.data ?? []) as Panel[],
     devices: (devices.data ?? []) as Pick<Device, 'kind' | 'level_key'>[]
   };
@@ -40,7 +40,7 @@ export async function generateMetadata({params}: Params): Promise<Metadata> {
 
 export default async function ProjectPage({params}: Params) {
   const {projectId} = await params;
-  const {problem, project, levels, panels, devices} = await load(projectId);
+  const {problem, project, layouts, panels, devices} = await load(projectId);
 
   if (problem) return <SetupNeeded problem={problem} />;
 
@@ -52,56 +52,50 @@ export default async function ProjectPage({params}: Params) {
   const usable = panels.filter((panel) => panel.is_usable);
   const unusable = panels.filter((panel) => !panel.is_usable);
 
-  function count(levelKey: string, kind: string) {
-    return devices.filter((device) => device.level_key === levelKey && device.kind === kind).length;
+  // Layout membawa lantai dan jenisnya sendiri, jadi jumlah device dihitung dari
+  // pasangan itu — bukan dari nama view, yang hanya label.
+  function count(layout: Layout) {
+    return devices.filter(
+      (device) => device.level_key === layout.level_key && device.kind === layout.kind
+    ).length;
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-[24px] font-semibold tracking-tight">{project.name}</h1>
-        <p className="mt-1 text-[13px] text-muted">{t('levelsSubheading')}</p>
+        <p className="mt-1 text-[13px] text-muted">{t('layoutsSubheading')}</p>
       </div>
 
       {devices.length === 0 ? <Empty title={t('emptyTitle')} body={t('emptyBody')} /> : null}
 
-      {levels.length > 0 ? (
+      {layouts.length > 0 ? (
         <Card>
-          <CardHeader title={t('levels')} />
+          <CardHeader title={t('layouts')} hint={t('layoutsHint')} />
           <ul className="divide-y divide-hairline">
-            {levels.map((level) => (
-              <li key={level.level_key} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <p className="min-w-24 text-[15px] font-semibold">{level.name}</p>
-                  <p className="text-[12px] text-muted">
-                    {t('deviceSummary', {
-                      lighting: count(level.level_key, 'lighting'),
-                      receptacle: count(level.level_key, 'receptacle')
-                    })}
-                  </p>
-                  <div className="ml-auto flex gap-2">
-                    {DEVICE_KINDS.map((kind) => (
-                      <Link
-                        key={kind}
-                        href={`/projects/${project.id}/${encodeURIComponent(level.level_key)}/${kind}`}
-                        className="inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border border-hairline bg-sunken px-3 py-1.5 text-[12px] font-semibold transition-colors duration-200 hover:border-muted"
-                      >
-                        {kind === 'lighting' ? (
-                          <Lightbulb className="size-3.5" aria-hidden />
-                        ) : (
-                          <PlugZap className="size-3.5" aria-hidden />
-                        )}
-                        {t(kind)}
-                        <ChevronRight className="size-3.5 text-muted" aria-hidden />
-                      </Link>
-                    ))}
-                  </div>
-                </div>
+            {layouts.map((layout) => (
+              <li key={layout.revit_unique_id}>
+                <Link
+                  href={`/projects/${project.id}/layouts/${encodeURIComponent(layout.revit_unique_id)}`}
+                  className="-mx-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--radius-control)] px-2 py-3 transition-colors duration-200 hover:bg-sunken"
+                >
+                  {layout.kind === 'lighting' ? (
+                    <Lightbulb className="size-4 shrink-0 text-muted" aria-hidden />
+                  ) : (
+                    <PlugZap className="size-4 shrink-0 text-muted" aria-hidden />
+                  )}
+                  <p className="min-w-0 flex-1 text-[14px] font-semibold">{layout.name}</p>
+                  {layout.scale ? <Badge>{t('scale', {scale: layout.scale})}</Badge> : null}
+                  <p className="text-[12px] text-muted">{t('deviceCount', {count: count(layout)})}</p>
+                  <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
+                </Link>
               </li>
             ))}
           </ul>
         </Card>
-      ) : null}
+      ) : (
+        <Empty title={t('noLayoutsTitle')} body={t('noLayoutsBody')} />
+      )}
 
       {panels.length > 0 ? (
         <Card>

@@ -64,7 +64,14 @@
     "emptyBody": "Open the CircuitSync add-in in Revit, bind the document to this project, then choose “Push model to cloud”.",
     "lighting": "Lighting",
     "receptacle": "Receptacles",
-    "deviceSummary": "{lighting} lighting · {receptacle} receptacles"
+    "deviceSummary": "{lighting} lighting · {receptacle} receptacles",
+    "layouts": "Plans",
+    "layoutsHint": "Taken from Revit plan views whose names mention lighting or socket outlet.",
+    "layoutsSubheading": "Pick a plan to start grouping.",
+    "scale": "1:{scale}",
+    "deviceCount": "{count, plural, other {# devices}}",
+    "noLayoutsTitle": "No plans to open yet.",
+    "noLayoutsBody": "The add-in only sends plan views whose names mention lighting or socket outlet. Check the view names in Revit, then pull the model again."
   },
   "plan": {
     "heading": "{level} · {kind}",
@@ -77,7 +84,23 @@
     "missingLoad": "{count} points without a VA value",
     "emptyTitle": "No devices on this level yet.",
     "emptyBody": "Push the model again from the add-in if the level does have devices.",
-    "hint": "Click a point to select it. Drag on empty space to select several at once."
+    "hint": "Click a point to select it. Drag on empty space to select several at once.",
+    "scale": "1:{scale}"
+  },
+  "connected": {
+    "heading": "Already connected",
+    "summary": "{count, plural, other {# devices}} are in a circuit and a panel",
+    "empty": "Nothing is connected on this plan yet. Pick some points, create a circuit, then send it to Revit.",
+    "fromRevit": "Connected in Revit",
+    "fromRevitHint": "The circuit was made in Revit, not through the web"
+  },
+  "browser": {
+    "heading": "System browser",
+    "hint": "Lighting and receptacle only. Hover to highlight them on the plan.",
+    "unassigned": "Not in a circuit",
+    "power": "Power",
+    "nothingLeft": "Every device on this plan is in a circuit.",
+    "noCircuits": "No circuits on this plan yet."
   },
   "circuits": {
     "heading": "Circuits",

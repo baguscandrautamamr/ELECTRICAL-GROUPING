@@ -83,17 +83,78 @@ public class ContractTests
     }
 
     /// <summary>
-    /// Null tidak dikirim: kalau ikut terkirim, upsert akan menimpa nilai yang sudah
-    /// benar di database dengan null.
+    /// Null ikut dikirim sebagai null, bukan dibuang. Snapshot adalah pengganti penuh:
+    /// device yang room-nya dihapus di Revit harus menjadi null di database, bukan
+    /// menyimpan nilai lama selamanya.
     /// </summary>
     [Fact]
-    public void Null_columns_are_left_out_of_the_payload()
+    public void Null_columns_are_sent_as_null()
     {
         var fields = Fields(new DeviceRow { RevitUniqueId = "abc", LevelKey = "L1", FamilyKey = "X::Y" });
 
-        Assert.DoesNotContain("room_name", fields);
-        Assert.DoesNotContain("va", fields);
-        Assert.DoesNotContain("circuit_number", fields);
+        Assert.Contains("room_name", fields);
+        Assert.Contains("va", fields);
+        Assert.Contains("circuit_number", fields);
+    }
+
+    /// <summary>
+    /// Baris yang isinya lengkap dan baris yang nullable-nya kosong harus menghasilkan
+    /// kunci yang sama persis. PostgREST menolak bulk insert dengan objek yang tidak
+    /// sekunci lewat <c>400 PGRST102 "All object keys must match"</c>, dan satu device
+    /// tanpa room saja sudah cukup menggagalkan seluruh tarikan model.
+    /// </summary>
+    [Fact]
+    public void Devices_with_and_without_nulls_carry_the_same_keys()
+    {
+        var filled = Fields(new DeviceRow
+        {
+            RevitUniqueId = "a",
+            LevelKey = "L1",
+            FamilyKey = "X::Y",
+            RoomName = "Ruang Rapat",
+            Va = 18,
+            CircuitNumber = "(LC)1",
+        });
+
+        var bare = Fields(new DeviceRow { RevitUniqueId = "b", LevelKey = "L1", FamilyKey = "X::Y" });
+
+        AssertSameSet(filled.ToArray(), bare);
+    }
+
+    [Fact]
+    public void Panels_with_and_without_nulls_carry_the_same_keys()
+    {
+        var filled = Fields(new PanelRow
+        {
+            RevitUniqueId = "a",
+            Name = "LP-1",
+            Prefix = "(LC)",
+            DistributionSystem = "380/220V",
+            Voltage = "220 V",
+            Phase = 3,
+            SlotsTotal = 24,
+            SlotsUsed = 2,
+            IsUsable = true,
+        });
+
+        // Panel tanpa distribution system: justru bentuk yang paling sering ada di
+        // model nyata, dan yang membuat tarikan model gagal seluruhnya.
+        var bare = Fields(new PanelRow { RevitUniqueId = "b", Name = "LP-2" });
+
+        AssertSameSet(filled.ToArray(), bare);
+    }
+
+    /// <summary>
+    /// Patch yang bermaksud mengosongkan kolom harus benar-benar mengirim null —
+    /// misalnya membersihkan <c>error</c> saat sebuah job akhirnya berhasil.
+    /// </summary>
+    [Fact]
+    public void Patch_that_clears_a_column_actually_sends_null()
+    {
+        var json = JsonSerializer.Serialize(
+            new { status = "applied", error = (string?)null }, CircuitSyncJson.Options);
+
+        Assert.Contains("\"error\":null", json);
     }
 
     [Fact]

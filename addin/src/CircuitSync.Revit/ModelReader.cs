@@ -38,7 +38,93 @@ public static class ModelReader
             });
         }
 
-        return new ModelSnapshot { Levels = levels, Panels = panels, Devices = devices };
+        return new ModelSnapshot
+        {
+            Levels = levels,
+            Layouts = ReadLayouts(doc),
+            Panels = panels,
+            Devices = devices,
+        };
+    }
+
+    /// <summary>
+    /// View denah yang dipakai sebagai halaman kerja di web. Yang memutuskan view mana
+    /// yang ikut adalah <see cref="LayoutFilter"/> di Core; di sini hanya penerjemahan.
+    /// </summary>
+    private static List<LayoutRow> ReadLayouts(Document doc)
+    {
+        var rows = new List<LayoutRow>();
+
+        var views = new FilteredElementCollector(doc)
+            .OfClass(typeof(ViewPlan))
+            .Cast<ViewPlan>()
+            .Where(view => !view.IsTemplate);
+
+        foreach (var view in views)
+        {
+            var kind = LayoutFilter.KindOf(view.Name);
+            if (kind is null)
+            {
+                continue;
+            }
+
+            // Denah tanpa level tidak bisa dipasangkan ke device mana pun, jadi tidak
+            // ada gunanya dikirim sebagai halaman kerja.
+            var level = view.GenLevel;
+            if (level is null)
+            {
+                continue;
+            }
+
+            var crop = CropInMillimeters(view);
+
+            rows.Add(new LayoutRow
+            {
+                RevitUniqueId = view.UniqueId,
+                Name = view.Name,
+                Kind = kind,
+                LevelKey = level.UniqueId,
+                Scale = view.Scale,
+                CropMinXMm = crop?.MinX,
+                CropMinYMm = crop?.MinY,
+                CropMaxXMm = crop?.MaxX,
+                CropMaxYMm = crop?.MaxY,
+            });
+        }
+
+        return rows
+            .OrderBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+            .Select((row, index) => row with { SortOrder = index })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Crop region view dalam milimeter model, atau null kalau crop tidak aktif.
+    /// </summary>
+    private static (double MinX, double MinY, double MaxX, double MaxY)? CropInMillimeters(View view)
+    {
+        if (!view.CropBoxActive)
+        {
+            return null;
+        }
+
+        var box = view.CropBox;
+        if (box is null)
+        {
+            return null;
+        }
+
+        // Min dan Max hidup di koordinat kotak itu sendiri; Transform yang
+        // memindahkannya ke koordinat model. Mengabaikannya membuat denah yang
+        // diputar mendapat kotak yang meleset.
+        var a = box.Transform.OfPoint(box.Min);
+        var b = box.Transform.OfPoint(box.Max);
+
+        return (
+            Units.ToMillimetersRounded(Math.Min(a.X, b.X)),
+            Units.ToMillimetersRounded(Math.Min(a.Y, b.Y)),
+            Units.ToMillimetersRounded(Math.Max(a.X, b.X)),
+            Units.ToMillimetersRounded(Math.Max(a.Y, b.Y)));
     }
 
     private static List<LevelRow> ReadLevels(Document doc)

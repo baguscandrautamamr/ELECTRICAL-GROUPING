@@ -25,6 +25,52 @@ public sealed class CloudException : Exception
     public string? Body { get; }
 
     public bool IsAuthFailure => Status is HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest;
+
+    /// <summary>
+    /// Baris untuk log aktivitas. Kode HTTP sendirian tidak menolong siapa pun:
+    /// "http_400" bisa berarti kolom tidak dikenal, constraint ditolak, atau payload
+    /// salah bentuk. PostgREST menaruh sebab sebenarnya di body sebagai JSON,
+    /// jadi itu yang ikut ditampilkan.
+    /// </summary>
+    public string Describe()
+    {
+        var body = Body;
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return Message;
+        }
+
+        return $"{Message} — {ServerMessage(body) ?? body}";
+    }
+
+    private static string? ServerMessage(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            // PostgREST: {"code":"PGRST102","message":"All object keys must match",...}
+            // GoTrue memakai "error_description" atau "msg" untuk hal yang sama.
+            foreach (var name in new[] { "message", "error_description", "msg", "error" })
+            {
+                if (document.RootElement.TryGetProperty(name, out var value) &&
+                    value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString();
+                }
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>
