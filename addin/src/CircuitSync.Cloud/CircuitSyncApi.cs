@@ -56,6 +56,10 @@ public sealed class CircuitSyncApi(SupabaseClient client)
             snapshot.Levels.Select(l => l with { ProjectId = projectId }).ToList(),
             "project_id,level_key", ct).ConfigureAwait(false);
 
+        await UpsertBatchedAsync("layouts",
+            snapshot.Layouts.Select(l => l with { ProjectId = projectId }).ToList(),
+            "project_id,revit_unique_id", ct).ConfigureAwait(false);
+
         await UpsertBatchedAsync("panels",
             snapshot.Panels.Select(p => p with { ProjectId = projectId }).ToList(),
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
@@ -65,7 +69,7 @@ public sealed class CircuitSyncApi(SupabaseClient client)
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
 
         var cutoff = Uri.EscapeDataString(stamp.UtcDateTime.ToString("o", CultureInfo.InvariantCulture));
-        foreach (var table in new[] { "levels", "panels", "devices" })
+        foreach (var table in new[] { "levels", "layouts", "panels", "devices" })
         {
             await Client.DeleteAsync(table, $"project_id=eq.{projectId}&updated_at=lt.{cutoff}", ct)
                 .ConfigureAwait(false);

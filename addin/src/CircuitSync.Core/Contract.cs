@@ -77,6 +77,30 @@ public sealed record LevelRow
     [JsonPropertyName("sort_order")] public int SortOrder { get; init; }
 }
 
+/// <summary>
+/// Cerminan satu view denah Revit. Ini yang jadi halaman kerja di web, menggantikan
+/// pasangan (level, kind) — nama view sudah memuat keduanya, dan hanya view yang
+/// membawa crop region serta skala yang benar.
+/// </summary>
+public sealed record LayoutRow
+{
+    [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
+    [JsonPropertyName("revit_unique_id")] public string RevitUniqueId { get; init; } = "";
+    [JsonPropertyName("name")] public string Name { get; init; } = "";
+    [JsonPropertyName("kind")] public string Kind { get; init; } = DeviceKind.Lighting;
+    [JsonPropertyName("level_key")] public string LevelKey { get; init; } = "";
+
+    /// <summary>Penyebut skala Revit: 1:100 disimpan sebagai 100.</summary>
+    [JsonPropertyName("scale")] public int? Scale { get; init; }
+
+    [JsonPropertyName("crop_min_x_mm")] public double? CropMinXMm { get; init; }
+    [JsonPropertyName("crop_min_y_mm")] public double? CropMinYMm { get; init; }
+    [JsonPropertyName("crop_max_x_mm")] public double? CropMaxXMm { get; init; }
+    [JsonPropertyName("crop_max_y_mm")] public double? CropMaxYMm { get; init; }
+
+    [JsonPropertyName("sort_order")] public int SortOrder { get; init; }
+}
+
 public sealed record DeviceRow
 {
     [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
@@ -168,6 +192,7 @@ public sealed record SymbolOverrideRow
 public sealed record ModelSnapshot
 {
     public IReadOnlyList<LevelRow> Levels { get; init; } = [];
+    public IReadOnlyList<LayoutRow> Layouts { get; init; } = [];
     public IReadOnlyList<PanelRow> Panels { get; init; } = [];
     public IReadOnlyList<DeviceRow> Devices { get; init; } = [];
 
