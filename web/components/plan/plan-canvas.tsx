@@ -37,14 +37,23 @@ function cropBounds(crop?: Crop): Bounds | null {
   return {minX, minY, width, height};
 }
 
+/** Simbol tidak pernah menyusut lebih dari ini terhadap ukuran dasarnya. */
+const SMALLEST = 0.55;
+
 /**
  * Jari-jari simbol yang disesuaikan dengan kerapatan titik.
  *
  * Ukuran tetap berdasarkan besar denah membuat simbol saling menindih justru di
- * tempat yang paling perlu dibaca: deretan lampu yang berjarak rapat. Yang dipakai
- * di sini adalah persentil bawah dari jarak ke tetangga terdekat, supaya baris
- * terapat pun tetap punya sela — dan bukan jarak rata-rata, yang gampang ditarik
- * naik oleh titik-titik terpencil.
+ * tempat yang paling perlu dibaca: deretan titik yang berjarak rapat.
+ *
+ * Yang dipakai adalah **median** jarak ke tetangga terdekat. Percobaan pertama
+ * memakai persentil ke-20 dan hasilnya terlalu kecil untuk dilihat: persentil bawah
+ * didominasi pasangan yang hampir berimpit, jadi beberapa titik yang menempel
+ * membuat seluruh denah ikut menciut. Median tidak peduli pada ekor itu.
+ *
+ * Batas bawahnya tegas. Simbol yang terbaca lebih penting daripada simbol yang
+ * dijamin tidak bersinggungan — tumpang tindih sudah ditangani zoom dan klik
+ * berulang, sedangkan titik sebesar debu tidak ada obatnya.
  */
 function densityRadius(devices: Device[], fallback: number): number {
   if (devices.length < 2) return fallback;
@@ -72,10 +81,9 @@ function densityRadius(devices: Device[], fallback: number): number {
   if (gaps.length === 0) return fallback;
 
   gaps.sort((a, b) => a - b);
-  const tight = gaps[Math.floor(gaps.length * 0.2)] ?? fallback;
+  const median = gaps[Math.floor(gaps.length / 2)] ?? fallback;
 
-  // Sela sekitar seperempat jarak di antara dua simbol bertetangga.
-  return Math.min(Math.max(tight * 0.38, fallback * 0.18), fallback);
+  return Math.min(Math.max(median * 0.42, fallback * SMALLEST), fallback);
 }
 
 /**
@@ -454,14 +462,19 @@ export function PlanCanvas({
                 <line x1={-radius} y1={radius} x2={radius} y2={-radius} stroke={stroke} strokeWidth={radius / 4} />
               ) : null}
 
-              {/* Nomor circuit ikut mengecil bersama simbolnya, dan pada denah yang
-                  sangat rapat ia lebih banyak menutupi daripada memberi tahu. */}
-              {device.circuit_number && radius > bounds.width / 260 ? (
+              {/* Nomor circuit dari Revit. Digariskan dengan warna latar lebih dulu
+                  (paint-order: stroke) supaya tetap terbaca saat jatuh di atas garis
+                  grid atau simbol tetangga. */}
+              {device.circuit_number ? (
                 <text
-                  x={radius * 1.6}
-                  y={-radius * 1.1}
-                  fontSize={radius * 1.7}
+                  x={radius * 1.5}
+                  y={-radius * 1.2}
+                  fontSize={radius * 1.8}
+                  fontWeight={600}
                   fill="var(--ink-muted)"
+                  stroke="var(--surface)"
+                  strokeWidth={radius / 3}
+                  paintOrder="stroke"
                   className="pointer-events-none"
                 >
                   {device.circuit_number}

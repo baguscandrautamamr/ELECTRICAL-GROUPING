@@ -479,10 +479,16 @@ bertumpuk", dan masing-masing butuh jawaban sendiri.
 **Simbolnya kebesaran.** Jari-jari dulu dihitung dari besar denah
 (`max(lebar, tinggi) / 90`), jadi gudang yang lampunya berjarak rapat mendapat simbol
 yang saling menindih — bukan karena titiknya bertumpuk, tapi karena gambarnya terlalu
-gemuk. Sekarang `densityRadius` memakai persentil ke-20 dari jarak ke tetangga
-terdekat. Persentil bawah, bukan rata-rata: yang harus punya sela adalah baris yang
-paling rapat, dan rata-rata gampang ditarik naik oleh titik terpencil. Perbandingannya
-dibatasi contoh 300 titik, jadi biayanya tidak tumbuh bersama denah.
+gemuk. Sekarang `densityRadius` memakai **median** jarak ke tetangga terdekat, dengan
+batas bawah 55% ukuran dasar. Perbandingannya dibatasi contoh 300 titik, jadi biayanya
+tidak tumbuh bersama denah.
+
+Percobaan pertama memakai persentil ke-20 dan hasilnya terlalu kecil untuk dilihat —
+titik sebesar debu. Sebabnya: persentil bawah didominasi pasangan yang hampir berimpit,
+jadi beberapa titik yang menempel membuat seluruh denah ikut menciut. Median tidak
+peduli pada ekor itu. Pelajarannya: simbol yang terbaca lebih penting daripada simbol
+yang dijamin tidak bersinggungan, karena tumpang tindih sudah punya obatnya sendiri
+(zoom dan klik berulang) sedangkan titik yang tak terlihat tidak.
 
 **Tidak bisa mendekat.** Kanvas sekarang bisa di-zoom dengan scroll dan digeser dengan
 tombol tengah, seperti di Revit. Tinggi viewBox selalu mengikuti lebarnya, jadi
