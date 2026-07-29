@@ -13,9 +13,13 @@ import {Badge, Button, Card, CardHeader, Empty, Notice, Select, cx} from '@/comp
 import type {Circuit, Device, DeviceKind, Layout, Panel} from '@/lib/contract';
 import {createCircuit, queueApply, removeCircuit, updateCircuit} from './actions';
 
-/** Jeda penyegaran, dalam detik: selagi menunggu Revit, dan selagi hanya mengikuti model. */
+/**
+ * Jeda penyegaran, dalam detik. Yang cepat hanya berlaku selagi menunggu Revit
+ * mengerjakan antrean — di situ user memang menatap layar menunggu sesuatu berubah.
+ * Sisanya lambat: kembalinya fokus tab yang menanggung penyegaran sehari-hari.
+ */
 const WAITING_SECONDS = 5;
-const IDLE_SECONDS = 20;
+const IDLE_SECONDS = 60;
 
 type Feedback = {tone: 'ok' | 'danger'; text: string} | null;
 

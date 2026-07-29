@@ -43,6 +43,12 @@ comment on table public.layout_devices is 'Device yang benar-benar tampak di seb
 create trigger layout_devices_touch before update on public.layout_devices
   for each row execute function public.touch_updated_at();
 
+-- `grant ... on all tables` di migrasi pertama hanya berlaku untuk tabel yang sudah
+-- ada saat itu. Di Supabase kelalaian ini tertutupi ALTER DEFAULT PRIVILEGES bawaan,
+-- jadi bedanya baru muncul di Postgres kosong — termasuk yang dipakai CI — sebagai
+-- "permission denied for table" yang tidak ada hubungannya dengan RLS.
+grant select, insert, update, delete on public.layout_devices to authenticated;
+
 alter table public.layout_devices enable row level security;
 
 create policy layout_devices_select on public.layout_devices for select to authenticated

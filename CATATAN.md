@@ -259,8 +259,53 @@ dinding tidak perlu menghasilkan tarikan model seukuran gudang. Perubahan yang m
 lebih dari 500 elemen langsung dianggap relevan — memeriksanya satu per satu di thread
 utama Revit lebih mahal daripada satu tarikan yang mungkin sia-sia.
 
-Detak dilewati selagi ada pekerjaan berjalan. Snapshot model besar bisa lebih lama
-daripada intervalnya, dan menumpuknya hanya menghasilkan request yang saling mendahului.
+#### Kenapa tidak berat
+
+`ModelReader.Read` berjalan di thread utama Revit: ia memindai seluruh fixture,
+menghitung ruangnya, dan menghitung isi tiap view denah. Menjalankannya tiap detak
+selama user menggambar akan terasa sebagai Revit yang tersendat berkala. Empat rem
+menahannya:
+
+| Rem | Efek |
+| --- | --- |
+| **Jeda tenang** 10 detik | Model harus diam dulu. Tarikan terjadi di sela pekerjaan, bukan di tengahnya. |
+| **Jarak minimum** 60 detik | Sesi panjang yang penuh jeda pendek tidak menghasilkan tarikan beruntun. |
+| **Lewati saat sibuk** | Snapshot model besar bisa lebih lama daripada intervalnya; menumpuknya hanya membuat request saling mendahului. |
+| **Sidik jari** | `ModelSnapshot.Fingerprint()` membandingkan isi terhadap tarikan terakhir yang berhasil. Sama berarti unggahan beserta lima DELETE sapuannya dibatalkan. |
+
+Sidik jari dihitung di luar thread Revit, dan barisnya diurutkan lebih dulu karena
+`FilteredElementCollector` tidak menjamin urutan. Hash-nya dihitung sendiri, bukan
+lewat `string.GetHashCode()`, yang di .NET diacak per proses.
+
+Tanda kotor baru dibersihkan setelah tarikan benar-benar selesai — kegagalan jaringan
+tidak boleh membuat perubahan hilang diam-diam. Tarikan manual selalu jadi, sekalipun
+sidik jarinya sama: user yang menekan tombol berhak melihat sesuatu terjadi, dan itu
+satu-satunya jalan memulihkan cloud yang pernah diubah dari luar.
+
+Di sisi web, yang menanggung sebagian besar pekerjaan adalah kembalinya fokus tab,
+bukan timer. Alur kerja sebenarnya adalah menggambar di Revit lalu berpindah ke
+browser, jadi menyegarkan tepat saat tab kembali terlihat terasa seketika dan tidak
+berongkos apa pun selama tab ditinggalkan. Timer hanya jaring pengaman, dan sengaja
+lambat — 60 detik, atau 5 detik selagi menunggu Revit mengerjakan antrean.
+
+### Hak tabel tidak ikut lahir bersama tabelnya
+
+`init.sql` memberi `grant select, insert, update, delete on all tables in schema
+public to authenticated`. Itu berlaku **sekali, untuk tabel yang ada saat itu** —
+tabel yang lahir di migrasi berikutnya tidak ikut.
+
+Di Supabase kelalaian ini tidak pernah terlihat: project-nya sudah punya
+`ALTER DEFAULT PRIVILEGES` bawaan yang memberi hak otomatis pada tabel baru. Di
+Postgres kosong — termasuk yang dipakai workflow `database` — tidak ada itu, dan
+bedanya muncul sebagai `permission denied for table` yang sama sekali tidak menyebut
+RLS, sehingga mudah disalahartikan sebagai policy yang salah.
+
+`layouts` sempat kehilangan haknya karena ini; disusulkan di migrasi
+`20260729020000`. Aturannya sekarang: **setiap migrasi yang membuat tabel harus
+memuat grant-nya sendiri**, sebaris di sebelah `enable row level security`.
+
+Uji RLS di `smoke.sql` tidak menangkapnya karena hanya menyentuh tabel dari migrasi
+pertama.
 
 ### Isi denah ditentukan view, bukan pasangan (level, kind)
 

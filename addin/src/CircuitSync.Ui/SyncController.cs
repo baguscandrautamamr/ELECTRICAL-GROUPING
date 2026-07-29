@@ -35,8 +35,22 @@ public sealed class SyncController : IDisposable
     private readonly AddinSettings _settings;
     private readonly System.Timers.Timer _timer;
 
+    /// <summary>Model harus diam selama ini dulu sebelum tarikan otomatis berjalan.</summary>
+    private static readonly TimeSpan QuietPeriod = TimeSpan.FromSeconds(10);
+
+    /// <summary>Jarak minimum antar tarikan otomatis, seaktif apa pun model dikerjakan.</summary>
+    private static readonly TimeSpan MinimumAutoPushGap = TimeSpan.FromSeconds(60);
+
     private int _busy;
     private int _modelDirty;
+    private long _lastChangeTicks;
+    private DateTime _lastAutoPushAt = DateTime.MinValue;
+
+    /// <summary>
+    /// Project dan sidik jari tarikan terakhir yang berhasil. Dipakai membuang unggahan
+    /// yang isinya sama persis dengan yang sudah ada di cloud.
+    /// </summary>
+    private (Guid Project, string Fingerprint)? _lastPush;
 
     public SyncController(RevitTaskQueue queue, AddinSettings settings, SupabaseClient? client = null)
     {
@@ -111,10 +125,14 @@ public sealed class SyncController : IDisposable
     /// Menandai bahwa ada device, panel, atau family yang berubah di Revit. Dipanggil dari
     /// event <c>DocumentChanged</c>, jadi harus murah — pekerjaannya menunggu detak timer.
     /// </summary>
-    public void NoteModelChanged() => Interlocked.Exchange(ref _modelDirty, 1);
+    public void NoteModelChanged()
+    {
+        Interlocked.Exchange(ref _modelDirty, 1);
+        Interlocked.Exchange(ref _lastChangeTicks, DateTime.UtcNow.Ticks);
+    }
 
     /// <summary>
-    /// Satu detak: kirim ulang model kalau ada yang berubah, lalu ambil rencana dari web.
+    /// Satu detak: kirim ulang model kalau perlu, lalu ambil rencana dari web.
     /// </summary>
     /// <remarks>
     /// Urutannya disengaja. Rencana dari web menunjuk device lewat <c>UniqueId</c>, jadi
@@ -132,7 +150,7 @@ public sealed class SyncController : IDisposable
             return;
         }
 
-        if (_settings.AutoPush && _client.IsSignedIn && Interlocked.Exchange(ref _modelDirty, 0) == 1)
+        if (ShouldAutoPush())
         {
             PushSnapshot(quiet: true);
         }
@@ -141,6 +159,40 @@ public sealed class SyncController : IDisposable
         {
             CheckJobs(quiet: true);
         }
+    }
+
+    /// <summary>
+    /// Menahan tarikan otomatis supaya tidak berjalan di tengah pekerjaan user.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ModelReader.Read"/> berjalan di thread utama Revit: ia memindai seluruh
+    /// fixture dan menghitung isi tiap view denah. Menjalankannya tiap detak selama user
+    /// menggambar akan terasa sebagai Revit yang tersendat berkala.
+    ///
+    /// Dua rem. <b>Jeda tenang</b> — model harus diam dulu, jadi tarikan terjadi di sela
+    /// pekerjaan, bukan di tengahnya. <b>Jarak minimum</b> — sesi menggambar panjang yang
+    /// penuh jeda pendek tetap tidak menghasilkan tarikan beruntun.
+    ///
+    /// Tanda kotor sengaja tidak dibersihkan di sini, melainkan setelah tarikan benar-benar
+    /// selesai. Kegagalan jaringan tidak boleh membuat perubahan hilang diam-diam.
+    /// </remarks>
+    private bool ShouldAutoPush()
+    {
+        if (!_settings.AutoPush || !_client.IsSignedIn || Volatile.Read(ref _modelDirty) == 0)
+        {
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        var lastChange = new DateTime(Interlocked.Read(ref _lastChangeTicks), DateTimeKind.Utc);
+
+        if (now - lastChange < QuietPeriod || now - _lastAutoPushAt < MinimumAutoPushGap)
+        {
+            return false;
+        }
+
+        _lastAutoPushAt = now;
+        return true;
     }
 
     // ---------------------------------------------------------------- auth
@@ -300,7 +352,26 @@ public sealed class SyncController : IDisposable
 
             RunInBackground(async () =>
             {
+                // Sidik jari dihitung di sini, bukan di thread Revit: serialisasi ratusan
+                // baris tidak perlu ikut menahan UI.
+                var fingerprint = snapshot.Fingerprint();
+                var unchanged = _lastPush is { } last &&
+                                last.Project == projectId &&
+                                last.Fingerprint == fingerprint;
+
+                // Tarikan manual selalu jadi. User yang menekan tombol berhak melihat
+                // sesuatu terjadi, dan itu juga satu-satunya jalan memulihkan cloud yang
+                // pernah diubah dari luar.
+                if (unchanged && quiet)
+                {
+                    Interlocked.Exchange(ref _modelDirty, 0);
+                    return;
+                }
+
                 await _api.PushSnapshotAsync(projectId, snapshot).ConfigureAwait(false);
+
+                _lastPush = (projectId, fingerprint);
+                Interlocked.Exchange(ref _modelDirty, 0);
                 Log(LogKind.Ok, "log.push_done", snapshot.Devices.Count, snapshot.Panels.Count);
             });
         });
