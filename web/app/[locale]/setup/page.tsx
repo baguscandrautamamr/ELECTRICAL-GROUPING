@@ -92,13 +92,15 @@ export default async function SetupPage({params}: {params: Promise<{locale: stri
   const rows: Array<{state: State; label: string; value: string; hint?: string}> = [
     {
       state: SUPABASE_URL_FROM_ENV ? 'ok' : 'unknown',
-      label: t('envUrl'),
+      // Nama variabelnya ikut ditulis: kegagalan paling sering bukan nilai yang
+      // salah, tapi nama yang tidak sama persis dengan yang dibaca kode.
+      label: `${t('envUrl')} — NEXT_PUBLIC_SUPABASE_URL`,
       value: SUPABASE_URL,
       hint: SUPABASE_URL_FROM_ENV ? undefined : t('usingDefault')
     },
     {
       state: SUPABASE_ANON_KEY_FROM_ENV ? 'ok' : 'unknown',
-      label: t('envKey'),
+      label: `${t('envKey')} — NEXT_PUBLIC_SUPABASE_ANON_KEY`,
       value: mask(SUPABASE_ANON_KEY),
       hint: SUPABASE_ANON_KEY_FROM_ENV ? undefined : t('usingDefault')
     },
