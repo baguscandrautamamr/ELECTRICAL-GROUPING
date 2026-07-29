@@ -445,6 +445,24 @@ punya `PostAsync` yang bisa di-`await`. `TaskCreationOptions.RunContinuationsAsy
 di dalamnya wajib — tanpa itu panggilan HTTP setelahnya ikut berjalan di thread utama
 Revit dan membekukan aplikasi.
 
+### Pesan Revit ikut disimpan, bukan hanya kunci kita
+
+`apply.panel_rejected` adalah pesan **kami**, dan ia benar tapi tidak berguna:
+"Revit menolak sambungan ke panel itu" tidak memberi tahu apa yang harus diperbaiki.
+Yang membedakan panel penuh dari tegangan yang tidak cocok hanya ada di kalimat
+Revit sendiri — dan kalimat itu dulu ditangkap di `CircuitApplier` lalu dibuang saat
+write-back, yang hanya mengirim `ErrorKey`.
+
+Sekarang `circuits.error` memuat dua bagian: **kunci di baris pertama, penjelasan
+mentah Revit di baris berikutnya.** Web menerjemahkan baris pertama dan menampilkan
+sisanya apa adanya di bawahnya. Dipisah baris, bukan kolom baru, supaya tidak perlu
+migrasi hanya untuk memindahkan informasi yang sudah ada di tangan.
+
+Penjelasannya diperkaya keadaan panel saat ditolak — nama, slot terpakai, jumlah titik
+— karena tiga angka itu biasanya sudah cukup membedakan sebabnya tanpa membuka Revit.
+Dropdown panel di web juga menyebut slot, supaya panel yang hampir penuh terlihat
+sebelum dipilih, bukan sesudah ditolak.
+
 ### Kunci pesan, bukan teks, di kolom `error`
 
 Add-in menulis kunci seperti `plan.panel_not_usable` ke `circuits.error`, bukan

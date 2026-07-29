@@ -162,10 +162,15 @@ public static class CircuitApplier
         }
         catch (Autodesk.Revit.Exceptions.ApplicationException ex)
         {
-            // Penyebab paling sering: panel tanpa distribution system, atau tegangan
-            // device tidak cocok dengan panel.
+            // Penyebab paling sering: panel penuh, tegangan device tidak cocok dengan
+            // distribution system panel, atau jumlah pole tidak terlayani.
+            //
+            // Pesan Revit-lah satu-satunya yang membedakan ketiganya, jadi ia dibawa
+            // apa adanya — beserta keadaan panel saat ditolak. Tanpa itu yang sampai ke
+            // user hanya "ditolak Revit", yang tidak memberitahu apa pun tentang apa
+            // yang harus diperbaiki.
             RollBackQuietly(sub);
-            return Failed(circuit, ErrorPanelRejected, ex.Message);
+            return Failed(circuit, ErrorPanelRejected, $"{ex.Message} — {Describe(doc, circuit)}");
         }
         catch (InvalidOperationException ex)
         {
@@ -198,6 +203,29 @@ public static class CircuitApplier
         doc.Delete(existing.Id);
         doc.Regenerate();
         return true;
+    }
+
+    /// <summary>
+    /// Keadaan panel saat sebuah circuit ditolak: nama, slot terpakai, dan berapa titik
+    /// yang hendak disambungkan. Tiga angka itu biasanya sudah cukup membedakan "panel
+    /// penuh" dari "tegangan tidak cocok" tanpa perlu membuka Revit.
+    /// </summary>
+    private static string Describe(Document doc, CircuitRow circuit)
+    {
+        if (doc.GetElement(circuit.PanelUniqueId) is not FamilyInstance panel)
+        {
+            return $"{circuit.DeviceUniqueIds.Length} titik";
+        }
+
+        var name = Params.String(panel, BuiltInParameter.RBS_ELEC_PANEL_NAME) ?? panel.Name;
+        var used = panel.MEPModel?.GetAssignedElectricalSystems()?.Count;
+        var total = Params.TypeInt(doc, panel, BuiltInParameter.RBS_ELEC_MAX_POLE_BREAKERS);
+
+        var slots = used is null && total is null
+            ? "slot tidak diketahui"
+            : $"slot {used?.ToString() ?? "?"}/{total?.ToString() ?? "?"}";
+
+        return $"panel {name}, {slots}, {circuit.DeviceUniqueIds.Length} titik";
     }
 
     private static void RollBackQuietly(SubTransaction sub)
