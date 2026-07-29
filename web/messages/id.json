@@ -116,11 +116,32 @@
     "connectedHint": "Circuit dan panel terisi",
     "no_connectorHint": "Tidak punya connector listrik, tidak bisa dipilih"
   },
+  "setup": {
+    "heading": "Keadaan penyiapan",
+    "subheading": "Halaman ini melaporkan apa yang sudah tersambung dan apa yang belum. Buka dari domain yang bermasalah.",
+    "envUrl": "URL project Supabase",
+    "envKey": "Publishable key",
+    "usingDefault": "Environment variable tidak terbaca, jadi nilai bawaan di kode yang dipakai. Isi di Vercel lalu deploy ulang — perubahan env var baru berlaku setelah build berikutnya.",
+    "authReachable": "Auth Supabase menjawab",
+    "authHint": "URL atau key-nya tidak cocok dengan project Supabase mana pun. Salin ulang dari Project Settings → API.",
+    "schemaReady": "Tabel database sudah ada",
+    "schemaHint": "Migrasi belum pernah dijalankan ke project ini. Tempel isi supabase/migrations/20260728000000_init.sql di SQL Editor Supabase, jalankan, lalu muat ulang halaman ini.",
+    "schemaBlockedHint": "Query-nya tidak sampai ke database. Selesaikan dulu dua baris di atas — kalau URL, key, dan Auth sudah benar, baris ini biasanya ikut benar.",
+    "redirectUrl": "Redirect URL yang dipakai tautan masuk",
+    "redirectHint": "Alamat ini harus ada di Authentication → URL Configuration → Redirect URLs di Supabase. Tanpa itu tautan masuk ditolak.",
+    "backToLogin": "Kembali ke halaman masuk",
+    "link": "Periksa penyiapan"
+  },
   "errors": {
     "unknown": "Perubahan tidak tersimpan. Coba lagi.",
     "notFound": "Halaman itu tidak ada.",
     "notFoundBody": "Tautannya mungkin sudah berubah. Kembali ke daftar project.",
-    "noAccess": "Project itu bukan milik akun ini."
+    "noAccess": "Project itu bukan milik akun ini.",
+    "schemaMissing": "Database belum disiapkan.",
+    "schemaMissingBody": "Tabelnya belum ada di project Supabase ini, jadi tidak ada yang bisa dibaca. Jalankan migrasi dulu.",
+    "loadFailed": "Data tidak bisa dibaca.",
+    "loadFailedBody": "Supabase menolak permintaan ini. Periksa URL project, key, dan policy RLS-nya.",
+    "openSetup": "Lihat keadaan penyiapan"
   },
   "revitErrors": {
     "plan": {

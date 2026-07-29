@@ -31,7 +31,12 @@ export function NewProjectForm() {
 
       setMessage({
         tone: 'danger',
-        text: result.reason === 'name' ? t('needName') : errors('unknown')
+        text:
+          result.reason === 'name'
+            ? t('needName')
+            : result.reason === 'schema'
+              ? errors('schemaMissingBody')
+              : errors('unknown')
       });
     });
   }

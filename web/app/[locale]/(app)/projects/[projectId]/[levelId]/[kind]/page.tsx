@@ -3,6 +3,7 @@ import {getTranslations} from 'next-intl/server';
 import type {Metadata} from 'next';
 import {notFound} from 'next/navigation';
 import {Empty} from '@/components/ui';
+import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
 import {
   isKind,
@@ -12,6 +13,7 @@ import {
   type Panel,
   type SymbolOverride
 } from '@/lib/contract';
+import {firstProblem} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 import {PlanView} from './plan-view';
 
@@ -44,6 +46,17 @@ export default async function PlanPage({params}: Params) {
     supabase.from('circuits').select('*').eq('project_id', projectId).eq('kind', kind).order('created_at'),
     supabase.from('symbol_overrides').select('*').eq('project_id', projectId)
   ]);
+
+  // Sama seperti halaman project: tabel yang belum ada bukan alasan menampilkan 404.
+  const problem = firstProblem(
+    project.error,
+    level.error,
+    devices.error,
+    panels.error,
+    circuits.error,
+    overrides.error
+  );
+  if (problem) return <SetupNeeded problem={problem} />;
 
   if (!project.data) notFound();
 

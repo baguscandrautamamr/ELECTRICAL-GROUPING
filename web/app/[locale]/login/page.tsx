@@ -4,6 +4,7 @@ import Image from 'next/image';
 import {LocaleToggle} from '@/components/locale-toggle';
 import {ThemeToggle} from '@/components/theme-toggle';
 import {Card} from '@/components/ui';
+import {Link} from '@/i18n/navigation';
 import {LoginForm} from './login-form';
 
 export async function generateMetadata({
@@ -29,6 +30,7 @@ export default async function LoginPage({
   const {error} = await searchParams;
   const t = await getTranslations('auth');
   const app = await getTranslations('app');
+  const setup = await getTranslations('setup');
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-5 py-12">
@@ -53,6 +55,14 @@ export default async function LoginPage({
           <LoginForm callbackFailed={error === 'callback'} />
         </div>
       </Card>
+
+      {/* Kalau masuk tidak bisa diselesaikan, penyebabnya ada di penyiapan, bukan di
+          form ini. Jalannya harus terlihat dari sini. */}
+      <p className="text-center">
+        <Link href="/setup" className="text-[12px] text-muted underline-offset-4 hover:underline">
+          {setup('link')}
+        </Link>
+      </p>
     </main>
   );
 }

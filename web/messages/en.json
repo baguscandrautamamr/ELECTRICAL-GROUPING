@@ -116,11 +116,32 @@
     "connectedHint": "Circuit and panel filled in",
     "no_connectorHint": "Has no electrical connector, cannot be selected"
   },
+  "setup": {
+    "heading": "Setup state",
+    "subheading": "This page reports what is connected and what is not. Open it from the domain that misbehaves.",
+    "envUrl": "Supabase project URL",
+    "envKey": "Publishable key",
+    "usingDefault": "The environment variable was not read, so the built-in default is in use. Set it in Vercel and deploy again — env var changes only take effect on the next build.",
+    "authReachable": "Supabase Auth responds",
+    "authHint": "The URL or key matches no Supabase project. Copy both again from Project Settings → API.",
+    "schemaReady": "Database tables exist",
+    "schemaHint": "The migration has never been run against this project. Paste supabase/migrations/20260728000000_init.sql into the Supabase SQL Editor, run it, then reload this page.",
+    "schemaBlockedHint": "The query never reached the database. Fix the two rows above first — once the URL, the key, and Auth are right, this row usually follows.",
+    "redirectUrl": "Redirect URL used by sign-in links",
+    "redirectHint": "This address must be listed under Authentication → URL Configuration → Redirect URLs in Supabase. Without it, sign-in links are rejected.",
+    "backToLogin": "Back to sign in",
+    "link": "Check setup"
+  },
   "errors": {
     "unknown": "The change was not saved. Try again.",
     "notFound": "That page does not exist.",
     "notFoundBody": "The link may have changed. Go back to the project list.",
-    "noAccess": "That project does not belong to this account."
+    "noAccess": "That project does not belong to this account.",
+    "schemaMissing": "The database is not set up yet.",
+    "schemaMissingBody": "The tables do not exist in this Supabase project, so there is nothing to read. Run the migration first.",
+    "loadFailed": "The data could not be read.",
+    "loadFailedBody": "Supabase refused this request. Check the project URL, the key, and the RLS policies.",
+    "openSetup": "See setup state"
   },
   "revitErrors": {
     "plan": {
