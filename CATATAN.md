@@ -234,6 +234,34 @@ akhirnya berhasil, diam-diam tidak berefek.
 Dijaga oleh `Devices_with_and_without_nulls_carry_the_same_keys` dan
 `Panels_with_and_without_nulls_carry_the_same_keys` di `ContractTests`.
 
+### Model terkirim sendiri, halaman melihat lagi sendiri
+
+Dua arah sinkronisasi punya pemicu yang berbeda, dan dulu hanya satu yang otomatis.
+Arah web → Revit sudah punya polling; arah Revit → web selalu manual, menunggu
+seseorang menekan "Tarik model ke cloud". Akibatnya lampu atau family yang baru
+ditambahkan tidak pernah sampai ke web, dan yang terlihat adalah web yang "tidak
+cocok dengan Revit" — padahal web belum pernah diberi tahu.
+
+Sekarang tiga hal bekerja bersama:
+
+1. `CircuitSyncApp` berlangganan `ControlledApplication.DocumentChanged` dan menandai
+   model kotor. Handler-nya hanya menandai — event itu berjalan pada setiap transaksi
+   Revit, termasuk milik add-in lain.
+2. Detak timer di `SyncController.Tick` mengirim ulang model kalau ada tanda itu, lalu
+   mengambil rencana dari web. Urutannya disengaja: rencana divalidasi terhadap model
+   terbaru, bukan terhadap model yang sudah berubah sejak tarikan terakhir.
+3. `AutoRefresh` di web menarik ulang data halaman secara berkala, dan hanya saat tab
+   benar-benar terlihat.
+
+Penyaringnya penting: `TouchesElectrical` hanya menandai kotor kalau perubahan
+menyentuh lighting fixture, electrical fixture, atau electrical equipment. Memindahkan
+dinding tidak perlu menghasilkan tarikan model seukuran gudang. Perubahan yang memuat
+lebih dari 500 elemen langsung dianggap relevan — memeriksanya satu per satu di thread
+utama Revit lebih mahal daripada satu tarikan yang mungkin sia-sia.
+
+Detak dilewati selagi ada pekerjaan berjalan. Snapshot model besar bisa lebih lama
+daripada intervalnya, dan menumpuknya hanya menghasilkan request yang saling mendahului.
+
 ### Isi denah ditentukan view, bukan pasangan (level, kind)
 
 Satu lantai punya lebih dari satu denah lighting. Di model FG WAREHOUSE ada

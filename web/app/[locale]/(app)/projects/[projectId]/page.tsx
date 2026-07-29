@@ -2,6 +2,7 @@ import {ChevronRight, Lightbulb, PlugZap, TriangleAlert} from 'lucide-react';
 import {getTranslations} from 'next-intl/server';
 import type {Metadata} from 'next';
 import {notFound} from 'next/navigation';
+import {AutoRefresh} from '@/components/auto-refresh';
 import {Badge, Card, CardHeader, Empty, Notice} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
@@ -92,6 +93,9 @@ export default async function ProjectPage({params}: Params) {
 
   return (
     <div className="space-y-6">
+      {/* Jumlah titik per denah berubah begitu add-in mengirim ulang model. */}
+      <AutoRefresh seconds={20} />
+
       <div>
         <h1 className="text-[24px] font-semibold tracking-tight">{project.name}</h1>
         <p className="mt-1 text-[13px] text-muted">{t('layoutsSubheading')}</p>

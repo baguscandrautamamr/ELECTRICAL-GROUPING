@@ -3,7 +3,8 @@
 import {Check, Pencil, Send, Trash2, X, Zap} from 'lucide-react';
 import {useTranslations} from 'next-intl';
 import {useRouter} from 'next/navigation';
-import {useEffect, useMemo, useState, useTransition} from 'react';
+import {useMemo, useState, useTransition} from 'react';
+import {AutoRefresh} from '@/components/auto-refresh';
 import {ConnectedDevices} from '@/components/plan/connected-devices';
 import {Legend} from '@/components/plan/legend';
 import {PlanCanvas} from '@/components/plan/plan-canvas';
@@ -12,8 +13,9 @@ import {Badge, Button, Card, CardHeader, Empty, Notice, Select, cx} from '@/comp
 import type {Circuit, Device, DeviceKind, Layout, Panel} from '@/lib/contract';
 import {createCircuit, queueApply, removeCircuit, updateCircuit} from './actions';
 
-/** Jeda penyegaran selagi ada circuit yang menunggu dikerjakan add-in. */
-const WAITING_POLL_MS = 5000;
+/** Jeda penyegaran, dalam detik: selagi menunggu Revit, dan selagi hanya mengikuti model. */
+const WAITING_SECONDS = 5;
+const IDLE_SECONDS = 20;
 
 type Feedback = {tone: 'ok' | 'danger'; text: string} | null;
 
@@ -87,15 +89,11 @@ export function PlanView({
    * Add-in menulis hasilnya langsung ke database, jadi halaman ini hanya perlu melihat
    * lagi — tanpa itu titik yang sudah tersambung baru berubah hijau setelah user menekan
    * muat ulang sendiri, dan tampak seolah pengirimannya gagal.
+   *
+   * Selagi menunggu Revit, penyegarannya dipercepat: di situlah user benar-benar
+   * menatap layar menunggu sesuatu berubah.
    */
   const waitingForRevit = circuits.some((circuit) => circuit.status === 'queued');
-
-  useEffect(() => {
-    if (!waitingForRevit) return;
-
-    const timer = setInterval(() => router.refresh(), WAITING_POLL_MS);
-    return () => clearInterval(timer);
-  }, [waitingForRevit, router]);
   const highlighted = useMemo(() => {
     if (pinned) return pinned;
     const circuit = circuits.find((candidate) => candidate.id === hovered);
@@ -161,6 +159,8 @@ export function PlanView({
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
+      <AutoRefresh seconds={waitingForRevit ? WAITING_SECONDS : IDLE_SECONDS} />
+
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-[13px] font-semibold">{t('selected', {count: selected.size})}</p>

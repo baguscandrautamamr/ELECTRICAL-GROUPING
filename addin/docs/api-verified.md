@@ -172,3 +172,10 @@ hasilnya setumpuk simbol yang saling menindih di pojok denah.
 | `UIApplication.MainWindowHandle` | Owner window WPF supaya panel tidak tenggelam di belakang Revit. |
 | `UIApplication.Application.VersionNumber` | Ditampilkan di subtitle panel. |
 | `UIApplication.ActiveUIDocument` | Bisa `null` kalau tidak ada dokumen terbuka. |
+| `UIControlledApplication.ControlledApplication` | Jalan masuk ke event tingkat aplikasi. |
+| `ControlledApplication.DocumentChanged` (event) | Dipakai menandai model berubah supaya tarikan berikutnya terkirim sendiri. |
+| `DocumentChangedEventArgs.GetDocument()` / `GetAddedElementIds()` / `GetModifiedElementIds()` / `GetDeletedElementIds()` | `Autodesk.Revit.DB.Events`. Id yang dihapus tidak bisa di-resolve — elemennya sudah tidak ada. |
+
+`DocumentChanged` berjalan pada **setiap** transaksi Revit, termasuk milik add-in lain.
+Handler-nya harus murah dan tidak boleh melempar: exception dari sana muncul sebagai
+dialog error Revit di tengah pekerjaan user.

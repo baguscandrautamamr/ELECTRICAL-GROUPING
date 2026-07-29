@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Windows.Media.Imaging;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using CircuitSync.Core;
 using CircuitSync.Revit;
@@ -39,6 +41,10 @@ public sealed class CircuitSyncApp : IExternalApplication
             // Tab sudah dibuat add-in lain. Itu bukan masalah — panel kita tetap masuk.
         }
 
+        // Satu-satunya cara mengetahui model berubah tanpa memindai ulang terus-menerus.
+        // Handler-nya hanya menandai; pekerjaannya menunggu detak timer di controller.
+        application.ControlledApplication.DocumentChanged += OnDocumentChanged;
+
         var panel = application.CreateRibbonPanel(tab, Translator["revit.panel_name"]);
         var assemblyPath = Assembly.GetExecutingAssembly().Location;
 
@@ -60,9 +66,75 @@ public sealed class CircuitSyncApp : IExternalApplication
 
     public Result OnShutdown(UIControlledApplication application)
     {
+        application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
         _window?.Close();
         _controller?.Dispose();
         return Result.Succeeded;
+    }
+
+    /// <summary>
+    /// Menandai model sebagai berubah supaya tarikan berikutnya terkirim sendiri.
+    /// </summary>
+    /// <remarks>
+    /// Berjalan pada setiap transaksi Revit, termasuk milik add-in lain, jadi harus
+    /// murah dan tidak boleh melempar: exception dari sini muncul sebagai dialog error
+    /// Revit di tengah pekerjaan user.
+    /// </remarks>
+    private static void OnDocumentChanged(object? sender, DocumentChangedEventArgs args)
+    {
+        if (_controller is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (TouchesElectrical(args))
+            {
+                _controller.NoteModelChanged();
+            }
+        }
+        catch (Autodesk.Revit.Exceptions.ApplicationException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Benar kalau perubahan menyentuh device atau panel. Memindahkan dinding tidak perlu
+    /// menghasilkan tarikan model seukuran gudang.
+    /// </summary>
+    private static bool TouchesElectrical(DocumentChangedEventArgs args)
+    {
+        // Elemen yang dihapus tidak bisa diperiksa kategorinya — sudah tidak ada di
+        // dokumen. Penghapusan apa pun dianggap relevan.
+        if (args.GetDeletedElementIds().Count > 0)
+        {
+            return true;
+        }
+
+        var added = args.GetAddedElementIds();
+        var modified = args.GetModifiedElementIds();
+
+        // Perubahan sebesar ini biasanya memuat elektrikal juga, dan memeriksanya satu per
+        // satu di thread utama Revit lebih mahal daripada tarikan model yang mungkin sia-sia.
+        if (added.Count + modified.Count > 500)
+        {
+            return true;
+        }
+
+        var doc = args.GetDocument();
+        foreach (var id in added.Concat(modified))
+        {
+            if (doc.GetElement(id)?.Category?.BuiltInCategory is
+                BuiltInCategory.OST_LightingFixtures or
+                BuiltInCategory.OST_ElectricalFixtures or
+                BuiltInCategory.OST_ElectricalEquipment)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

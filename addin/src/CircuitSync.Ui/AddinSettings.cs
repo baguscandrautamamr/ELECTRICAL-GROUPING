@@ -24,6 +24,17 @@ public sealed class AddinSettings
 
     public bool AutoPoll { get; set; }
 
+    /// <summary>
+    /// Mengirim ulang model sendiri setiap kali ada device, panel, atau family yang
+    /// berubah di Revit. Menyala secara bawaan.
+    /// </summary>
+    /// <remarks>
+    /// Tanpa ini, lampu atau family yang baru ditambahkan tidak pernah sampai ke web
+    /// sampai seseorang ingat menekan "Tarik model ke cloud" — dan yang terlihat di
+    /// layar adalah web yang "tidak cocok", bukan web yang belum diberi tahu.
+    /// </remarks>
+    public bool AutoPush { get; set; } = true;
+
     public bool PlaceTags { get; set; } = true;
 
     /// <summary>
@@ -53,6 +64,9 @@ public sealed class AddinSettings
                             : ThemeMode.Light,
                         PollSeconds = shape.PollSeconds is >= 5 and <= 600 ? shape.PollSeconds : 20,
                         AutoPoll = shape.AutoPoll,
+                        // Setelan lama tidak punya field ini; null berarti "belum pernah
+                        // dipilih", dan bawaannya menyala.
+                        AutoPush = shape.AutoPush ?? true,
                         PlaceTags = shape.PlaceTags,
                         WebUrl = Trimmed(shape.WebUrl),
                     }
@@ -76,6 +90,7 @@ public sealed class AddinSettings
                 Theme == ThemeMode.Dark ? "dark" : "light",
                 PollSeconds,
                 AutoPoll,
+                AutoPush,
                 PlaceTags,
                 WebUrl);
             File.WriteAllText(Path, JsonSerializer.Serialize(shape, new JsonSerializerOptions { WriteIndented = true }));
@@ -89,5 +104,6 @@ public sealed class AddinSettings
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private sealed record Shape(
-        string Language, string Theme, int PollSeconds, bool AutoPoll, bool PlaceTags, string? WebUrl);
+        string Language, string Theme, int PollSeconds, bool AutoPoll, bool? AutoPush, bool PlaceTags,
+        string? WebUrl);
 }

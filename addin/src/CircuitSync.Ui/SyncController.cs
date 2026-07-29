@@ -36,6 +36,7 @@ public sealed class SyncController : IDisposable
     private readonly System.Timers.Timer _timer;
 
     private int _busy;
+    private int _modelDirty;
 
     public SyncController(RevitTaskQueue queue, AddinSettings settings, SupabaseClient? client = null)
     {
@@ -45,7 +46,7 @@ public sealed class SyncController : IDisposable
         _api = new CircuitSyncApi(_client);
 
         _timer = new System.Timers.Timer { AutoReset = true };
-        _timer.Elapsed += (_, _) => CheckJobs(quiet: true);
+        _timer.Elapsed += (_, _) => Tick();
 
         _queue.OnError = ex => Log(LogKind.Error, "log.apply_failed", ex.Message);
     }
@@ -90,9 +91,56 @@ public sealed class SyncController : IDisposable
         _settings.AutoPoll = enabled;
         _settings.PollSeconds = seconds;
         _settings.Save();
+        RestartTimer();
+    }
 
-        _timer.Interval = Math.Max(5, seconds) * 1000d;
-        _timer.Enabled = enabled;
+    public void SetAutoPush(bool enabled)
+    {
+        _settings.AutoPush = enabled;
+        _settings.Save();
+        RestartTimer();
+    }
+
+    private void RestartTimer()
+    {
+        _timer.Interval = Math.Max(5, _settings.PollSeconds) * 1000d;
+        _timer.Enabled = _settings.AutoPoll || _settings.AutoPush;
+    }
+
+    /// <summary>
+    /// Menandai bahwa ada device, panel, atau family yang berubah di Revit. Dipanggil dari
+    /// event <c>DocumentChanged</c>, jadi harus murah — pekerjaannya menunggu detak timer.
+    /// </summary>
+    public void NoteModelChanged() => Interlocked.Exchange(ref _modelDirty, 1);
+
+    /// <summary>
+    /// Satu detak: kirim ulang model kalau ada yang berubah, lalu ambil rencana dari web.
+    /// </summary>
+    /// <remarks>
+    /// Urutannya disengaja. Rencana dari web menunjuk device lewat <c>UniqueId</c>, jadi
+    /// mengirim model lebih dulu membuat rencana yang datang divalidasi terhadap keadaan
+    /// terbaru — bukan terhadap model yang sudah berubah sejak tarikan terakhir.
+    ///
+    /// Detak dilewati selagi ada pekerjaan berjalan. Snapshot model besar bisa lebih lama
+    /// dari intervalnya, dan menumpuknya hanya menghasilkan antrean request yang saling
+    /// mendahului.
+    /// </remarks>
+    private void Tick()
+    {
+        if (Busy)
+        {
+            return;
+        }
+
+        if (_settings.AutoPush && _client.IsSignedIn && Interlocked.Exchange(ref _modelDirty, 0) == 1)
+        {
+            PushSnapshot(quiet: true);
+        }
+
+        if (_settings.AutoPoll)
+        {
+            CheckJobs(quiet: true);
+        }
     }
 
     // ---------------------------------------------------------------- auth
@@ -227,18 +275,21 @@ public sealed class SyncController : IDisposable
 
     // ---------------------------------------------------------------- snapshot
 
-    public void PushSnapshot()
+    public void PushSnapshot(bool quiet = false)
     {
-        if (!EnsureSignedIn())
+        if (!EnsureSignedIn(quiet))
         {
             return;
         }
 
-        Log(LogKind.Info, "log.push_start");
+        if (!quiet)
+        {
+            Log(LogKind.Info, "log.push_start");
+        }
 
         _queue.Post(app =>
         {
-            if (!TryContext(app, out var doc, out var projectId))
+            if (!TryContext(app, out var doc, out var projectId, quiet))
             {
                 return;
             }
