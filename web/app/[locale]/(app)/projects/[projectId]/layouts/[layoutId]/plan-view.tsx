@@ -4,10 +4,12 @@ import {Send, Trash2, Zap} from 'lucide-react';
 import {useTranslations} from 'next-intl';
 import {useRouter} from 'next/navigation';
 import {useMemo, useState, useTransition} from 'react';
+import {ConnectedDevices} from '@/components/plan/connected-devices';
 import {Legend} from '@/components/plan/legend';
 import {PlanCanvas} from '@/components/plan/plan-canvas';
+import {SystemBrowser} from '@/components/plan/system-browser';
 import {Badge, Button, Card, CardHeader, Empty, Notice, Select, cx} from '@/components/ui';
-import type {Circuit, Device, DeviceKind, Panel} from '@/lib/contract';
+import type {Circuit, Device, DeviceKind, Layout, Panel} from '@/lib/contract';
 import {createCircuit, queueApply, removeCircuit} from './actions';
 
 type Feedback = {tone: 'ok' | 'danger'; text: string} | null;
@@ -15,6 +17,7 @@ type Feedback = {tone: 'ok' | 'danger'; text: string} | null;
 export function PlanView({
   projectId,
   kind,
+  layout,
   devices,
   panels,
   circuits,
@@ -22,6 +25,7 @@ export function PlanView({
 }: {
   projectId: string;
   kind: DeviceKind;
+  layout: Layout;
   devices: Device[];
   panels: Panel[];
   circuits: Circuit[];
@@ -44,6 +48,8 @@ export function PlanView({
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [hovered, setHovered] = useState<string | null>(null);
+  /** Sorotan yang datang dari daftar di bawah denah dan dari System Browser. */
+  const [pinned, setPinned] = useState<ReadonlySet<string> | null>(null);
   const [panelId, setPanelId] = useState('');
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pending, startTransition] = useTransition();
@@ -72,9 +78,10 @@ export function PlanView({
 
   const drafts = circuits.filter((circuit) => circuit.status === 'draft' || circuit.status === 'failed');
   const highlighted = useMemo(() => {
+    if (pinned) return pinned;
     const circuit = circuits.find((candidate) => candidate.id === hovered);
     return new Set(circuit?.device_unique_ids ?? []);
-  }, [hovered, circuits]);
+  }, [pinned, hovered, circuits]);
 
   function select(ids: string[], mode: 'replace' | 'toggle' | 'add') {
     setSelected((current) => {
@@ -148,9 +155,17 @@ export function PlanView({
           onSelect={select}
           symbolOverrides={symbolOverrides}
           highlighted={highlighted}
+          crop={layout}
         />
 
         <p className="text-[12px] text-muted">{t('hint')}</p>
+
+        <ConnectedDevices
+          devices={devices}
+          circuits={circuits}
+          panels={panels}
+          onHighlight={(ids) => setPinned(ids.length > 0 ? new Set(ids) : null)}
+        />
       </div>
 
       <div className="space-y-5">
@@ -298,6 +313,13 @@ export function PlanView({
             </ul>
           )}
         </Card>
+
+        <SystemBrowser
+          devices={devices}
+          circuits={circuits}
+          panels={panels}
+          onHighlight={(ids) => setPinned(ids.length > 0 ? new Set(ids) : null)}
+        />
 
         <Card>
           <Legend familyKeys={familyKeys} />

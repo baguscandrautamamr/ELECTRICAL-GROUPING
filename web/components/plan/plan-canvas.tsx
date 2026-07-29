@@ -7,12 +7,36 @@ import {STATUS_STYLE, geometryFor, symbolFor} from '@/lib/symbols';
 
 type Bounds = {minX: number; minY: number; width: number; height: number};
 
+/** Bagian layout yang dipakai kanvas. Null di keempatnya berarti crop tidak aktif di Revit. */
+type Crop = {
+  crop_min_x_mm: number | null;
+  crop_min_y_mm: number | null;
+  crop_max_x_mm: number | null;
+  crop_max_y_mm: number | null;
+};
+
+function cropBounds(crop?: Crop): Bounds | null {
+  if (!crop) return null;
+
+  const {crop_min_x_mm: minX, crop_min_y_mm: minY, crop_max_x_mm: maxX, crop_max_y_mm: maxY} = crop;
+  if (minX === null || minY === null || maxX === null || maxY === null) return null;
+
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  // Crop yang tak masuk akal lebih baik diabaikan daripada menghasilkan viewBox
+  // kosong yang membuat denah hilang sama sekali.
+  if (!(width > 0) || !(height > 0)) return null;
+
+  return {minX, minY, width, height};
+}
+
 /**
  * Koordinat model dalam milimeter, Y ke atas. SVG memakai Y ke bawah, jadi Y
  * dicerminkan di sini — bukan lewat transform scale(1,-1), yang juga akan
  * mencerminkan teks dan simbol.
  */
-function useLayout(devices: Device[]) {
+function useLayout(devices: Device[], crop?: Crop) {
   return useMemo(() => {
     const xs = devices.map((device) => device.x_mm);
     const ys = devices.map((device) => device.y_mm);
@@ -21,6 +45,21 @@ function useLayout(devices: Device[]) {
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
+
+    /**
+     * Crop region view Revit, kalau view-nya memang punya. Memakainya membuat
+     * denah di web membingkai area yang sama dengan sheet — proporsi dan posisi
+     * titik cocok dengan cetakan, bukan sekadar pas-pasan mengikuti sebaran titik.
+     */
+    const region = cropBounds(crop);
+    if (region) {
+      const flipped = region.minY + (region.minY + region.height);
+      return {
+        bounds: region,
+        radius: Math.max(Math.max(region.width, region.height) / 90, 60),
+        place: (device: Device) => ({x: device.x_mm, y: flipped - device.y_mm})
+      };
+    }
 
     // Satu titik, atau semua titik sebaris, akan memberi lebar nol.
     const spanX = Math.max(maxX - minX, 1000);
@@ -42,7 +81,7 @@ function useLayout(devices: Device[]) {
       radius,
       place: (device: Device) => ({x: device.x_mm, y: flip - device.y_mm})
     };
-  }, [devices]);
+  }, [devices, crop]);
 }
 
 export function PlanCanvas({
@@ -50,7 +89,8 @@ export function PlanCanvas({
   selected,
   onSelect,
   symbolOverrides,
-  highlighted
+  highlighted,
+  crop
 }: {
   devices: Device[];
   selected: ReadonlySet<string>;
@@ -58,8 +98,10 @@ export function PlanCanvas({
   symbolOverrides: Record<string, string>;
   /** Device milik circuit yang sedang disorot di daftar samping. */
   highlighted?: ReadonlySet<string>;
+  /** Crop region view Revit; tanpa ini kanvas jatuh ke kotak pembatas device. */
+  crop?: Crop;
 }) {
-  const {bounds, radius, place} = useLayout(devices);
+  const {bounds, radius, place} = useLayout(devices, crop);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [marquee, setMarquee] = useState<{x1: number; y1: number; x2: number; y2: number} | null>(null);
   const additive = useRef(false);
