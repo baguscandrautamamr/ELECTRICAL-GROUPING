@@ -121,7 +121,7 @@
     "subheading": "This page reports what is connected and what is not. Open it from the domain that misbehaves.",
     "envUrl": "Supabase project URL",
     "envKey": "Publishable key",
-    "usingDefault": "The environment variable was not read, so the built-in default is in use. Set it in Vercel and deploy again — env var changes only take effect on the next build.",
+    "usingDefault": "The variable name in Vercel must match this row exactly, including the NEXT_PUBLIC_ prefix and the capitals. Any other name (supabase_url, for example) is never read. These must also not be marked Sensitive — the value has to be inlined at build time, and it is public by design. Deploy again after fixing.",
     "authReachable": "Supabase Auth responds",
     "authHint": "The URL or key matches no Supabase project. Copy both again from Project Settings → API.",
     "schemaReady": "Database tables exist",
