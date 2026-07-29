@@ -117,6 +117,12 @@ Dipakai untuk membaca layout kerja — lihat `ModelReader.ReadLayouts`.
 | `View.CropBox` | `BoundingBoxXYZ`. |
 | `BoundingBoxXYZ.Min` / `.Max` / `.Transform` | Min dan Max ada di koordinat kotak, bukan koordinat model. |
 | `Transform.OfPoint(XYZ)` | Memindahkan titik crop ke koordinat model. Tanpa ini denah yang diputar meleset. |
+| `FilteredElementCollector(Document, ElementId viewId)` | Overload yang menyaring persis seperti yang terlihat di view: filter view, visibility kategori, crop region, fase. Dasar isi `layout_devices`. |
+
+Overload per-view itu yang membedakan denah lighting dari denah emergency/exit di
+lantai yang sama. Melempar `Autodesk.Revit.Exceptions.ArgumentException` untuk view
+yang tidak mendukung pengumpulan; ditangani sebagai "isinya tidak diketahui", bukan
+sebagai kegagalan tarikan model.
 
 ## Satuan
 

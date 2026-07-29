@@ -5,7 +5,7 @@ import {notFound} from 'next/navigation';
 import {Badge, Empty} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
-import type {Circuit, Device, Layout, Panel, SymbolOverride} from '@/lib/contract';
+import type {Circuit, Device, Layout, LayoutDevice, Panel, SymbolOverride} from '@/lib/contract';
 import {firstProblem} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 import {PlanView} from './plan-view';
@@ -41,8 +41,10 @@ export default async function PlanPage({params}: Params) {
   if (layoutProblem) return <SetupNeeded problem={layoutProblem} />;
   if (!layout) notFound();
 
-  // Layout membawa lantai dan jenisnya sendiri; device dipilih dari keduanya.
-  const [project, devices, panels, circuits, overrides] = await Promise.all([
+  // Isi denah ditentukan view Revit-nya, bukan pasangan (level, kind): satu lantai bisa
+  // punya denah lighting dan denah emergency/exit sekaligus, dan keduanya berlantai serta
+  // berjenis sama. `layout_devices` yang membedakannya.
+  const [project, devices, members, anyMember, panels, circuits, overrides] = await Promise.all([
     supabase.from('projects').select('id, name').eq('id', projectId).maybeSingle(),
     supabase
       .from('devices')
@@ -51,6 +53,15 @@ export default async function PlanPage({params}: Params) {
       .eq('level_key', layout.level_key)
       .eq('kind', layout.kind)
       .order('revit_unique_id'),
+    supabase
+      .from('layout_devices')
+      .select('device_unique_id')
+      .eq('project_id', projectId)
+      .eq('layout_unique_id', layoutKey),
+    // Membedakan "view ini memang kosong" dari "model ditarik add-in versi lama yang
+    // belum mengirim keanggotaan sama sekali". Tanpa ini denah kosong yang sah akan
+    // diam-diam jatuh ke perilaku lama dan menampilkan seluruh isi lantai.
+    supabase.from('layout_devices').select('layout_unique_id').eq('project_id', projectId).limit(1),
     supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
     supabase
       .from('circuits')
@@ -64,6 +75,8 @@ export default async function PlanPage({params}: Params) {
   const problem = firstProblem(
     project.error,
     devices.error,
+    members.error,
+    anyMember.error,
     panels.error,
     circuits.error,
     overrides.error
@@ -72,7 +85,14 @@ export default async function PlanPage({params}: Params) {
 
   if (!project.data) notFound();
 
-  const deviceRows = (devices.data ?? []) as Device[];
+  const onLevel = (devices.data ?? []) as Device[];
+  const memberIds = new Set(
+    ((members.data ?? []) as LayoutDevice[]).map((row) => row.device_unique_id)
+  );
+
+  const deviceRows = (anyMember.data ?? []).length > 0
+    ? onLevel.filter((device) => memberIds.has(device.revit_unique_id))
+    : onLevel;
   const t = await getTranslations('plan');
   const nav = await getTranslations('nav');
 

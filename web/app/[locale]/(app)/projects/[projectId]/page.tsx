@@ -14,21 +14,47 @@ type Params = {params: Promise<{projectId: string}>};
 async function load(projectId: string) {
   const supabase = await createClient();
 
-  const [project, layouts, panels, devices] = await Promise.all([
+  const [project, layouts, panels, devices, anyMember] = await Promise.all([
     supabase.from('projects').select('id, name, owner_id, created_at, updated_at').eq('id', projectId).maybeSingle(),
     supabase.from('layouts').select('*').eq('project_id', projectId).order('sort_order'),
     supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
-    supabase.from('devices').select('kind, level_key').eq('project_id', projectId)
+    supabase.from('devices').select('kind, level_key').eq('project_id', projectId),
+    supabase.from('layout_devices').select('layout_unique_id').eq('project_id', projectId).limit(1)
   ]);
+
+  const layoutRows = (layouts.data ?? []) as Layout[];
+
+  /**
+   * Jumlah dihitung per view, bukan per (level, kind) — dua denah lighting di lantai
+   * yang sama punya isi berbeda. Dihitung lewat `count` di server, bukan dengan
+   * menarik seluruh baris keanggotaan: model besar punya ribuan, dan PostgREST
+   * memotong hasilnya di seribu tanpa memberi tahu.
+   */
+  const counted = (anyMember.data ?? []).length > 0
+    ? new Map(
+        await Promise.all(
+          layoutRows.map(async (layout) => {
+            const {count} = await supabase
+              .from('layout_devices')
+              .select('*', {count: 'exact', head: true})
+              .eq('project_id', projectId)
+              .eq('layout_unique_id', layout.revit_unique_id);
+
+            return [layout.revit_unique_id, count ?? 0] as const;
+          })
+        )
+      )
+    : null;
 
   return {
     // Tanpa ini, database yang belum dimigrasi berakhir sebagai 404: project-nya
     // null bukan karena tidak ada, tapi karena tabelnya belum ada.
-    problem: firstProblem(project.error, layouts.error, panels.error, devices.error),
+    problem: firstProblem(project.error, layouts.error, panels.error, devices.error, anyMember.error),
     project: project.data as Project | null,
-    layouts: (layouts.data ?? []) as Layout[],
+    layouts: layoutRows,
     panels: (panels.data ?? []) as Panel[],
-    devices: (devices.data ?? []) as Pick<Device, 'kind' | 'level_key'>[]
+    devices: (devices.data ?? []) as Pick<Device, 'kind' | 'level_key'>[],
+    counted
   };
 }
 
@@ -40,7 +66,7 @@ export async function generateMetadata({params}: Params): Promise<Metadata> {
 
 export default async function ProjectPage({params}: Params) {
   const {projectId} = await params;
-  const {problem, project, layouts, panels, devices} = await load(projectId);
+  const {problem, project, layouts, panels, devices, counted} = await load(projectId);
 
   if (problem) return <SetupNeeded problem={problem} />;
 
@@ -52,12 +78,16 @@ export default async function ProjectPage({params}: Params) {
   const usable = panels.filter((panel) => panel.is_usable);
   const unusable = panels.filter((panel) => !panel.is_usable);
 
-  // Layout membawa lantai dan jenisnya sendiri, jadi jumlah device dihitung dari
-  // pasangan itu — bukan dari nama view, yang hanya label.
+  // Jumlahnya harus sama dengan yang terlihat di view Revit. Pasangan (level, kind)
+  // hanya dipakai kalau model ditarik add-in versi lama yang belum mengirim
+  // keanggotaan layout sama sekali.
   function count(layout: Layout) {
-    return devices.filter(
-      (device) => device.level_key === layout.level_key && device.kind === layout.kind
-    ).length;
+    return (
+      counted?.get(layout.revit_unique_id) ??
+      devices.filter(
+        (device) => device.level_key === layout.level_key && device.kind === layout.kind
+      ).length
+    );
   }
 
   return (
