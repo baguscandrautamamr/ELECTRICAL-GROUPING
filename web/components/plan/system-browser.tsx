@@ -89,7 +89,9 @@ export function SystemBrowser({
     <Card>
       <CardHeader title={t('heading')} hint={t('hint')} />
 
-      <ul className="space-y-0.5 text-[13px]">
+      {/* Pohonnya bisa memuat ratusan family dan circuit sekaligus; tanpa batas tinggi
+          kartu ini sendirian membuat halaman berkali-kali lipat lebih panjang. */}
+      <ul className="max-h-[24rem] space-y-0.5 overflow-y-auto pr-1 text-[13px]">
         <Node
           label={t('unassigned')}
           count={unassigned.length}

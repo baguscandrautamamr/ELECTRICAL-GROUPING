@@ -148,4 +148,74 @@ public class PlanValidatorTests
         Assert.Equal(good.Id, result.Accepted[0].Id);
         Assert.False(result.AllAccepted);
     }
+
+    // ------------------------------------------------------------------ mengubah circuit
+
+    /// <summary>
+    /// Circuit yang sudah diterapkan lalu diubah dari web: device di dalamnya memang
+    /// berstatus <c>connected</c>, tapi ke circuit ini sendiri. Menolaknya berarti circuit
+    /// yang sudah jalan tidak akan pernah bisa diubah lagi.
+    /// </summary>
+    [Fact]
+    public void Accepts_devices_already_on_the_circuit_being_rebuilt()
+    {
+        var snapshot = Snapshot([
+            Device("a", status: DeviceStatus.Connected),
+            Device("b", status: DeviceStatus.Connected),
+        ]) with
+        {
+            DeviceSystems = new Dictionary<string, string> { ["a"] = "system-1", ["b"] = "system-1" },
+        };
+
+        var circuit = Circuit("a", "b") with { RevitUniqueId = "system-1" };
+
+        var result = PlanValidator.Validate([circuit], snapshot);
+
+        Assert.True(result.AllAccepted);
+        Assert.Single(result.Accepted);
+    }
+
+    /// <summary>
+    /// Menambahkan device yang masih dipakai circuit <b>lain</b> tetap ditolak, sekalipun
+    /// yang sedang diubah adalah circuit yang sudah ada.
+    /// </summary>
+    [Fact]
+    public void Rejects_a_device_owned_by_a_different_system_while_rebuilding()
+    {
+        var snapshot = Snapshot([
+            Device("a", status: DeviceStatus.Connected),
+            Device("b", status: DeviceStatus.Connected),
+        ]) with
+        {
+            DeviceSystems = new Dictionary<string, string> { ["a"] = "system-1", ["b"] = "system-2" },
+        };
+
+        var circuit = Circuit("a", "b") with { RevitUniqueId = "system-1" };
+
+        var result = PlanValidator.Validate([circuit], snapshot);
+
+        Assert.Empty(result.Accepted);
+        Assert.Contains(result.Problems, p => p.MessageKey == PlanValidator.AlreadyConnected && p.Detail == "b");
+    }
+
+    /// <summary>
+    /// Device yang dikeluarkan dari circuit tidak perlu ikut dikirim: yang dikirim web
+    /// adalah isi barunya, dan sisanya dilepas add-in saat circuit dibangun ulang.
+    /// </summary>
+    [Fact]
+    public void Accepts_a_rebuilt_circuit_that_dropped_a_device()
+    {
+        var snapshot = Snapshot([
+            Device("a", status: DeviceStatus.Connected),
+            Device("b", status: DeviceStatus.Connected),
+        ]) with
+        {
+            DeviceSystems = new Dictionary<string, string> { ["a"] = "system-1", ["b"] = "system-1" },
+        };
+
+        var result = PlanValidator.Validate([Circuit("a") with { RevitUniqueId = "system-1" }], snapshot);
+
+        Assert.True(result.AllAccepted);
+        Assert.Equal(["a"], result.Accepted[0].DeviceUniqueIds);
+    }
 }

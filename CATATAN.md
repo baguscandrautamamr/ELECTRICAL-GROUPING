@@ -93,6 +93,14 @@ Cara memastikan domain yang benar:
 - Atau lihat field **homepage** di halaman GitHub repo ini — integrasi Vercel
   mengisinya sendiri dengan domain production.
 
+Domain itu juga dipakai tombol **Buka web app** di add-in. Nilai bawaannya
+(`https://electrical-grouping.vercel.app`) ikut terkompilasi ke DLL dan belum tentu
+cocok dengan deployment Anda, jadi panel punya kolom **Alamat web app** — tempel
+domain yang benar di situ, tersimpan di `settings.json` dan tidak perlu build ulang.
+Tombolnya membuka halaman project yang terikat ke dokumen, bukan beranda. Untuk
+memasangnya sekali untuk semua pengguna, pakai `CIRCUITSYNC_WEB_URL` atau
+`circuitsync.json`.
+
 `app/[locale]` tidak punya rute `/` sendiri; `/` dilayani redirect di `proxy.ts`
 menuju `/{locale}/login`. Jadi kalau hostname-nya benar dan deployment-nya jadi,
 membuka `/` akan berakhir di halaman login — bukan 404. Sudah diperiksa di build
@@ -225,6 +233,68 @@ akhirnya berhasil, diam-diam tidak berefek.
 
 Dijaga oleh `Devices_with_and_without_nulls_carry_the_same_keys` dan
 `Panels_with_and_without_nulls_carry_the_same_keys` di `ContractTests`.
+
+### Write-back setelah apply memakai PATCH, bukan upsert
+
+Konsekuensi langsung dari keputusan di atas, dan sempat merusak data.
+
+Setelah apply, add-in memperbarui status device supaya denah di web berubah hijau
+tanpa menunggu tarikan model berikutnya. Dulu itu dikirim sebagai upsert baris
+`devices` yang hanya diisi status dan nomor circuit. Karena null ikut ditulis dan
+upsert PostgREST (`Prefer: resolution=merge-duplicates`) menimpa **seluruh** kolom
+yang ada di body, setiap device yang baru saja di-circuit kehilangan `x_mm`,
+`y_mm`, `level_key`, `family_key`, `room_name`, dan `va`. Gejalanya: titik yang
+sudah tersambung menumpuk di koordinat 0,0 atau hilang dari denah, dan satu-satunya
+cara memulihkannya adalah menarik ulang model dari Revit.
+
+Sekarang yang dikirim adalah `DeviceConnection` — tiga field, lewat PATCH yang
+disaring `revit_unique_id=in.(…)`. PATCH hanya menyentuh kolom yang benar-benar ada
+di body, jadi geometri tidak pernah ikut tersentuh. Dijaga oleh
+`Device_connection_carries_only_the_two_columns_that_change` di `ContractTests`.
+
+Aturan turunannya: **jangan pernah memakai `DeviceRow` untuk pembaruan parsial.**
+`DeviceRow` adalah baris penuh, dan hanya sah dipakai oleh snapshot.
+
+### Device tanpa `LocationPoint`
+
+Tidak semua fixture punya `LocationPoint` — yang di-host di face atau berbasis garis
+memakai `LocationCurve`, dan sebagian tidak punya location sama sekali. Dulu semuanya
+dibaca sebagai 0,0, yang di web tampak sebagai setumpuk simbol menindih di pojok
+denah. `ModelReader.PointOf` sekarang turun bertingkat: `LocationPoint` → titik tengah
+`LocationCurve` → pusat bounding box.
+
+### Mengubah circuit berarti membongkar lalu membuat ulang
+
+Tombol ubah di web menulis isi baru ke baris `circuits`, mengembalikan statusnya ke
+`draft`, tapi **mempertahankan `revit_unique_id`**. Field itulah penanda bagi add-in
+bahwa circuit ini sudah hidup di model: sebelum membuat yang baru, `CircuitApplier`
+menghapus `ElectricalSystem` lama lewat `Document.Delete`. Tanpa itu Revit menolak
+seluruh rencana, karena satu device tidak boleh berada di dua power circuit.
+
+Yang harus Anda tahu sebagai pemakai: **nomornya bisa berubah.** `SelectPanel`
+memilih slot kosong sendiri, dan slot yang baru saja dilepas belum tentu yang
+dipakainya lagi. Mempertahankan nomor butuh `AddToCircuit`/`RemoveFromCircuit`, yang
+belum diverifikasi terhadap reference assembly 2025 — lihat `addin/docs/api-verified.md`.
+
+`PlanValidator` ikut tahu soal ini: device berstatus `connected` biasanya ditolak,
+kecuali kalau ia memang anggota `ElectricalSystem` yang sedang dibangun ulang.
+Pemetaannya dibawa `ModelSnapshot.DeviceSystems`, yang sengaja tidak masuk database —
+itu bahan validasi, bukan kolom tabel.
+
+### Semua job antrean dikerjakan, bukan yang pertama saja
+
+`SyncController.CheckJobs` dulu mengambil `jobs[0]`. Akibatnya dua kali "Kirim ke
+Revit" dari web berarti dua kali klik "Ambil rencana" di add-in, dan sisanya diam di
+antrean tanpa penjelasan. Sekarang seluruh job dikerjakan berurutan sampai habis.
+
+Model dibaca ulang untuk **setiap** job, bukan sekali di awal: job sebelumnya baru
+saja mengubah model, dan memvalidasi job berikutnya terhadap snapshot basi akan
+menolak device yang sebenarnya sah.
+
+Alur itu berpindah-pindah antara thread Revit dan jaringan, jadi `RevitTaskQueue`
+punya `PostAsync` yang bisa di-`await`. `TaskCreationOptions.RunContinuationsAsynchronously`
+di dalamnya wajib — tanpa itu panggilan HTTP setelahnya ikut berjalan di thread utama
+Revit dan membekukan aplikasi.
 
 ### Kunci pesan, bukan teks, di kolom `error`
 

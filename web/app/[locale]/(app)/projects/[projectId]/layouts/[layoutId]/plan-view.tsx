@@ -1,16 +1,19 @@
 'use client';
 
-import {Send, Trash2, Zap} from 'lucide-react';
+import {Check, Pencil, Send, Trash2, X, Zap} from 'lucide-react';
 import {useTranslations} from 'next-intl';
 import {useRouter} from 'next/navigation';
-import {useMemo, useState, useTransition} from 'react';
+import {useEffect, useMemo, useState, useTransition} from 'react';
 import {ConnectedDevices} from '@/components/plan/connected-devices';
 import {Legend} from '@/components/plan/legend';
 import {PlanCanvas} from '@/components/plan/plan-canvas';
 import {SystemBrowser} from '@/components/plan/system-browser';
 import {Badge, Button, Card, CardHeader, Empty, Notice, Select, cx} from '@/components/ui';
 import type {Circuit, Device, DeviceKind, Layout, Panel} from '@/lib/contract';
-import {createCircuit, queueApply, removeCircuit} from './actions';
+import {createCircuit, queueApply, removeCircuit, updateCircuit} from './actions';
+
+/** Jeda penyegaran selagi ada circuit yang menunggu dikerjakan add-in. */
+const WAITING_POLL_MS = 5000;
 
 type Feedback = {tone: 'ok' | 'danger'; text: string} | null;
 
@@ -53,6 +56,8 @@ export function PlanView({
   const [panelId, setPanelId] = useState('');
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pending, startTransition] = useTransition();
+  /** Id circuit yang sedang diubah. Null berarti kartu samping sedang membuat yang baru. */
+  const [editing, setEditing] = useState<string | null>(null);
 
   const usablePanels = useMemo(() => panels.filter((panel) => panel.is_usable), [panels]);
   const byId = useMemo(
@@ -77,6 +82,20 @@ export function PlanView({
   }, [selected, byId]);
 
   const drafts = circuits.filter((circuit) => circuit.status === 'draft' || circuit.status === 'failed');
+
+  /**
+   * Add-in menulis hasilnya langsung ke database, jadi halaman ini hanya perlu melihat
+   * lagi — tanpa itu titik yang sudah tersambung baru berubah hijau setelah user menekan
+   * muat ulang sendiri, dan tampak seolah pengirimannya gagal.
+   */
+  const waitingForRevit = circuits.some((circuit) => circuit.status === 'queued');
+
+  useEffect(() => {
+    if (!waitingForRevit) return;
+
+    const timer = setInterval(() => router.refresh(), WAITING_POLL_MS);
+    return () => clearInterval(timer);
+  }, [waitingForRevit, router]);
   const highlighted = useMemo(() => {
     if (pinned) return pinned;
     const circuit = circuits.find((candidate) => candidate.id === hovered);
@@ -96,12 +115,13 @@ export function PlanView({
     });
   }
 
-  function act(work: () => Promise<{ok: boolean; reason?: string}>, done: string) {
+  function act(work: () => Promise<{ok: boolean; reason?: string}>, done: string, onDone?: () => void) {
     startTransition(async () => {
       const result = await work();
 
       if (result.ok) {
         setFeedback({tone: 'ok', text: done});
+        onDone?.();
         router.refresh();
         return;
       }
@@ -117,6 +137,27 @@ export function PlanView({
       });
     });
   }
+
+  /**
+   * Mengubah circuit memakai alat yang sama dengan membuatnya: isi circuit masuk ke
+   * pilihan di denah, lalu user menambah atau mengurangi titik seperti biasa.
+   */
+  function startEdit(circuit: Circuit) {
+    setEditing(circuit.id);
+    setSelected(new Set(circuit.device_unique_ids));
+    setPanelId(circuit.panel_unique_id);
+    setPinned(new Set(circuit.device_unique_ids));
+    setFeedback(null);
+  }
+
+  function stopEdit() {
+    setEditing(null);
+    setSelected(new Set());
+    setPanelId('');
+    setPinned(null);
+  }
+
+  const edited = editing === null ? null : circuits.find((circuit) => circuit.id === editing);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
@@ -170,7 +211,16 @@ export function PlanView({
 
       <div className="space-y-5">
         <Card>
-          <CardHeader title={c('heading')} />
+          <CardHeader
+            title={edited ? c('editHeading') : c('heading')}
+            hint={
+              edited
+                ? c('editHint', {
+                    number: edited.circuit_number ?? c('numberPending')
+                  })
+                : undefined
+            }
+          />
 
           {usablePanels.length === 0 ? (
             <Notice tone="warn">{c('noUsablePanel')}</Notice>
@@ -186,25 +236,53 @@ export function PlanView({
                 ))}
               </Select>
 
-              <Button
-                tone="primary"
-                disabled={pending}
-                onClick={() =>
-                  act(
-                    () =>
-                      createCircuit({
-                        projectId,
-                        panelUniqueId: panelId,
-                        kind,
-                        deviceUniqueIds: [...selected]
-                      }),
-                    c('created')
-                  )
-                }
-              >
-                <Zap className="size-4" aria-hidden />
-                {c('create')}
-              </Button>
+              {edited ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    tone="primary"
+                    disabled={pending}
+                    onClick={() =>
+                      act(
+                        () =>
+                          updateCircuit({
+                            circuitId: edited.id,
+                            panelUniqueId: panelId,
+                            deviceUniqueIds: [...selected]
+                          }),
+                        c('updated'),
+                        stopEdit
+                      )
+                    }
+                  >
+                    <Check className="size-4" aria-hidden />
+                    {c('saveEdit')}
+                  </Button>
+                  <Button tone="quiet" disabled={pending} onClick={stopEdit}>
+                    <X className="size-4" aria-hidden />
+                    {c('cancelEdit')}
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  tone="primary"
+                  disabled={pending}
+                  onClick={() =>
+                    act(
+                      () =>
+                        createCircuit({
+                          projectId,
+                          panelUniqueId: panelId,
+                          kind,
+                          deviceUniqueIds: [...selected]
+                        }),
+                      c('created')
+                    )
+                  }
+                >
+                  <Zap className="size-4" aria-hidden />
+                  {c('create')}
+                </Button>
+              )}
             </div>
           )}
 
@@ -231,7 +309,7 @@ export function PlanView({
                   }
                 >
                   <Send className="size-4" aria-hidden />
-                  {c('send')}
+                  {c('sendCount', {count: drafts.length})}
                 </Button>
               ) : undefined
             }
@@ -240,7 +318,12 @@ export function PlanView({
           {circuits.length === 0 ? (
             <Empty title={c('emptyTitle')} body={c('emptyBody')} />
           ) : (
-            <ul className="divide-y divide-hairline">
+            /**
+             * Daftar circuit tumbuh seiring pekerjaan dan bisa mencapai puluhan baris.
+             * Dibatasi tingginya supaya kartu di bawahnya tetap terjangkau tanpa harus
+             * menggulung seluruh halaman.
+             */
+            <ul className="max-h-[28rem] divide-y divide-hairline overflow-y-auto pr-1">
               {circuits.map((circuit) => {
                 const panel = panels.find((candidate) => candidate.revit_unique_id === circuit.panel_unique_id);
                 const va = circuit.device_unique_ids.reduce(
@@ -255,7 +338,8 @@ export function PlanView({
                     onMouseLeave={() => setHovered(null)}
                     className={cx(
                       'flex items-start gap-3 py-3 transition-colors duration-200 first:pt-0 last:pb-0',
-                      hovered === circuit.id && 'bg-sunken'
+                      hovered === circuit.id && 'bg-sunken',
+                      editing === circuit.id && 'bg-accent/10'
                     )}
                   >
                     <div className="min-w-0 flex-1">
@@ -293,6 +377,20 @@ export function PlanView({
                       >
                         {c(circuit.status)}
                       </Badge>
+
+                      {/* Circuit yang sedang dikerjakan add-in tidak boleh diubah di tengah jalan. */}
+                      {circuit.status === 'queued' ? null : (
+                        <Button
+                          tone="quiet"
+                          aria-label={c('edit')}
+                          title={c('edit')}
+                          disabled={pending}
+                          className="px-2"
+                          onClick={() => startEdit(circuit)}
+                        >
+                          <Pencil className="size-4" aria-hidden />
+                        </Button>
+                      )}
 
                       {circuit.status === 'draft' || circuit.status === 'failed' ? (
                         <Button

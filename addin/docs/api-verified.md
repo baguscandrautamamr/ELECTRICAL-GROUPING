@@ -49,6 +49,21 @@ ini benar untuk versi Revit yang tercantum.
 **Tidak ada** `ElectricalSystem.BaseEquipment` di 2025 — kelayakan panel dibaca dari
 `PanelName`, bukan dari properti itu.
 
+### Mengubah circuit yang sudah ada
+
+Circuit yang isinya diubah dari web dibongkar lalu dibuat ulang — bukan ditambal.
+
+| Anggota | Catatan |
+| --- | --- |
+| `Document.Delete(ElementId)` | Membongkar `ElectricalSystem` lama sebelum dibuat ulang. Mengembalikan `ICollection<ElementId>`; hasilnya tidak dipakai. |
+
+Alasan memilih bongkar-pasang: `ElectricalSystem.AddToCircuit` / `RemoveFromCircuit`
+akan mempertahankan nomor circuit, tapi keduanya **belum diverifikasi** terhadap
+reference assembly 2025 dan tidak dipakai di repo ini. Konsekuensi yang diterima:
+nomor hasil pembangunan ulang bisa berbeda, karena `SelectPanel` memilih slot kosong
+sendiri. Kalau nomor yang tetap ternyata penting, verifikasi dua anggota itu dulu
+lewat `tools/ApiProbe` sebelum menggantinya.
+
 ## Parameter
 
 | `BuiltInParameter` | Dipakai untuk |
@@ -123,6 +138,12 @@ Dipakai untuk membaca layout kerja — lihat `ModelReader.ReadLayouts`.
 | `FamilyInstance.Room` | Bisa melempar kalau family tidak punya Room Calculation Point. |
 | `FamilyInstance.Host` | Fallback level untuk fixture yang di-host ceiling. |
 | `LocationPoint.Point` | Koordinat device. |
+| `LocationCurve.Curve` + `Curve.Evaluate(double, bool)` | Fixture berbasis garis tidak punya `LocationPoint`; titik tengahnya diambil di parameter 0,5 ternormalisasi. |
+| `Element.get_BoundingBox(View)` | Dipanggil dengan `null` = kotak di koordinat model. Jaring terakhir untuk device tanpa location. |
+| `XYZ.Add(XYZ)`, `XYZ.Multiply(double)` | Dipakai menghitung pusat bounding box. Metode eksplisit, bukan operator. |
+
+Ketiganya ada supaya device tanpa `LocationPoint` tidak jatuh ke titik 0,0 — di web
+hasilnya setumpuk simbol yang saling menindih di pojok denah.
 
 ## Transaksi
 

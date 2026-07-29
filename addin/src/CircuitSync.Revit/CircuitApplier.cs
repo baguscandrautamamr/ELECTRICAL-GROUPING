@@ -28,9 +28,16 @@ public sealed record CircuitApplyResult
 
     public string? ErrorDetail { get; init; }
 
-    public IReadOnlyList<DeviceRow> UpdatedDevices { get; init; } = [];
+    /// <summary>
+    /// Status koneksi device setelah apply, untuk ditulis balik ke database. Sengaja
+    /// bukan baris device penuh — lihat <see cref="DeviceConnection"/>.
+    /// </summary>
+    public IReadOnlyList<DeviceConnection> UpdatedDevices { get; init; } = [];
 
     public int TagsPlaced { get; init; }
+
+    /// <summary>Benar kalau circuit lama dibongkar dulu karena isinya diubah dari web.</summary>
+    public bool Rebuilt { get; init; }
 }
 
 /// <summary>
@@ -114,6 +121,11 @@ public static class CircuitApplier
                 return Failed(circuit, ErrorNoDevices);
             }
 
+            // Circuit yang isinya diubah dari web membawa UniqueId ElectricalSystem lamanya.
+            // Revit tidak mengizinkan satu device berada di dua power circuit, jadi yang lama
+            // harus dibongkar dulu — kalau tidak, Create menolak seluruh rencana.
+            var rebuilt = RemoveExistingSystem(doc, circuit.RevitUniqueId);
+
             var ids = elements.Select(e => e.Id).ToList();
             var system = ElectricalSystem.Create(doc, ids, ElectricalSystemType.PowerCircuit);
             if (system is null)
@@ -139,16 +151,12 @@ public static class CircuitApplier
                 RevitUniqueId = system.UniqueId,
                 ErrorDetail = missing.Count == 0 ? null : $"{missing.Count} device sudah dihapus",
                 TagsPlaced = tags,
-                UpdatedDevices = elements.Select(e => new DeviceRow
+                Rebuilt = rebuilt,
+                UpdatedDevices = elements.Select(e => new DeviceConnection
                 {
                     RevitUniqueId = e.UniqueId,
                     Status = DeviceStatus.Connected,
                     CircuitNumber = number,
-                    // Kolom lain sengaja tidak diisi: upsert hanya menyentuh yang dikirim,
-                    // dan sisanya tetap punya snapshot terakhir.
-                    Kind = circuit.Kind,
-                    LevelKey = "",
-                    FamilyKey = "",
                 }).ToList(),
             };
         }
@@ -168,6 +176,28 @@ public static class CircuitApplier
         {
             sub.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Membongkar ElectricalSystem lama sebelum circuit dibuat ulang dengan isi baru.
+    /// Mengembalikan false kalau tidak ada yang perlu dibongkar — circuit baru, atau
+    /// circuit-nya sudah dihapus orang lain dari Revit.
+    /// </summary>
+    /// <remarks>
+    /// Nomor circuit hasil pembangunan ulang <b>tidak dijamin sama</b>: Revit memilih
+    /// slot kosong sendiri saat <see cref="ElectricalSystem.SelectPanel"/>, dan slot
+    /// yang baru saja dilepas belum tentu yang dipakainya lagi.
+    /// </remarks>
+    private static bool RemoveExistingSystem(Document doc, string? systemUniqueId)
+    {
+        if (string.IsNullOrEmpty(systemUniqueId) || doc.GetElement(systemUniqueId) is not ElectricalSystem existing)
+        {
+            return false;
+        }
+
+        doc.Delete(existing.Id);
+        doc.Regenerate();
+        return true;
     }
 
     private static void RollBackQuietly(SubTransaction sub)

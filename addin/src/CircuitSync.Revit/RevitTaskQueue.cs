@@ -32,6 +32,34 @@ public sealed class RevitTaskQueue : IExternalEventHandler
         _event?.Raise();
     }
 
+    /// <summary>
+    /// <see cref="Post"/> yang bisa di-<c>await</c>, untuk alur yang berganti-ganti antara
+    /// thread Revit dan jaringan — misalnya menerapkan beberapa job antrean berurutan.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TaskCreationOptions.RunContinuationsAsynchronously"/> wajib: tanpa itu
+    /// lanjutan dari pemanggil — termasuk panggilan HTTP — akan ikut berjalan di thread
+    /// utama Revit dan membekukan aplikasi.
+    /// </remarks>
+    public Task<T> PostAsync<T>(Func<UIApplication, T> work)
+    {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Post(app =>
+        {
+            try
+            {
+                completion.SetResult(work(app));
+            }
+            catch (Exception ex)
+            {
+                completion.SetException(ex);
+            }
+        });
+
+        return completion.Task;
+    }
+
     public void Execute(UIApplication app)
     {
         while (_queue.TryDequeue(out var work))
