@@ -22,7 +22,7 @@ public sealed record SupabaseConfig
     /// dicatat integrasi Vercel di repo; kalau domainnya berganti, timpa lewat
     /// <see cref="EnvWebUrl"/> atau <c>circuitsync.json</c> — tidak perlu build ulang.
     /// </summary>
-    public string WebUrl { get; init; } = "https://electrical-grouping.vercel.app";
+    public string WebUrl { get; init; } = "https://revitgrouping.vercel.app";
 
     public static SupabaseConfig Default { get; } = new()
     {

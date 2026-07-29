@@ -6,7 +6,7 @@ import {Badge, Empty} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
 import type {Circuit, Device, Layout, LayoutDevice, Panel, SymbolOverride} from '@/lib/contract';
-import {firstProblem} from '@/lib/supabase/errors';
+import {firstProblem, optional} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 import {PlanView} from './plan-view';
 
@@ -99,11 +99,12 @@ export default async function PlanPage({params}: Params) {
     supabase.from('symbol_overrides').select('*').eq('project_id', projectId)
   ]);
 
+  // `layout_devices` datang dari migrasi yang lebih baru. Belum diterapkan berarti
+  // halaman kembali ke penyaringan per level — bukan layar "database belum disiapkan"
+  // di atas database yang sehat.
   const problem = firstProblem(
     project.error,
     devices.error,
-    members.error,
-    anyMember.error,
     panels.error,
     circuits.error,
     overrides.error
@@ -114,7 +115,7 @@ export default async function PlanPage({params}: Params) {
 
   const ofKind = (devices.data ?? []) as Device[];
   const memberIds = new Set(
-    ((members.data ?? []) as LayoutDevice[]).map((row) => row.device_unique_id)
+    ((optional(members) ?? []) as LayoutDevice[]).map((row) => row.device_unique_id)
   );
 
   /**
@@ -123,7 +124,7 @@ export default async function PlanPage({params}: Params) {
    * `LevelId` sendiri — dan menyaring dengannya membuat device seperti itu hilang
    * dari denah meski jelas terlihat di view-nya.
    */
-  const deviceRows = (anyMember.data ?? []).length > 0
+  const deviceRows = (optional(anyMember) ?? []).length > 0
     ? ofKind.filter((device) => memberIds.has(device.revit_unique_id))
     : ofKind.filter((device) => device.level_key === layout.level_key);
   const t = await getTranslations('plan');

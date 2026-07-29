@@ -159,7 +159,9 @@
     "redirectUrl": "Redirect URL used by sign-in links",
     "redirectHint": "This address must be listed under Authentication → URL Configuration → Redirect URLs in Supabase. Without it, sign-in links are rejected.",
     "backToLogin": "Back to sign in",
-    "link": "Check setup"
+    "link": "Check setup",
+    "latestMigration": "Latest migration",
+    "latestMigrationHint": "The layout_devices table is missing. Run 20260729010000_layout_devices.sql then 20260729020000_layout_device_counts.sql in the SQL Editor. The app still works without them, but the emergency/exit plan keeps showing the same contents as the lighting plan."
   },
   "errors": {
     "unknown": "The change was not saved. Try again.",

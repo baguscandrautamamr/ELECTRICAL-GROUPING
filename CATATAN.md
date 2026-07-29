@@ -94,7 +94,7 @@ Cara memastikan domain yang benar:
   mengisinya sendiri dengan domain production.
 
 Domain itu juga dipakai tombol **Buka web app** di add-in. Nilai bawaannya
-(`https://electrical-grouping.vercel.app`) ikut terkompilasi ke DLL dan belum tentu
+(`https://revitgrouping.vercel.app`) ikut terkompilasi ke DLL dan belum tentu
 cocok dengan deployment Anda, jadi panel punya kolom **Alamat web app** — tempel
 domain yang benar di situ, tersimpan di `settings.json` dan tidak perlu build ulang.
 Tombolnya membuka halaman project yang terikat ke dokumen, bukan beranda. Untuk
@@ -335,6 +335,23 @@ terasa janggal.
 
 Pengambilan device juga dihalaman sekarang: seribu baris adalah batas potong PostgREST,
 dan tanpa halaman model besar kehilangan titik tanpa error dan tanpa tanda apa pun.
+
+### Fitur dari migrasi baru tidak boleh menjatuhkan halaman
+
+`classifyError` memperlakukan `PGRST202` — fungsi tidak ditemukan — sama dengan tabel
+yang hilang: `schema`, yang berarti layar "Database belum disiapkan". Begitu halaman
+project mulai memanggil `layout_device_counts`, database yang sudah berisi tapi belum
+menerima migrasi terbaru langsung tampil sebagai database kosong. Halaman `/setup` di
+sebelahnya tetap bilang tabelnya ada, karena ia hanya menyentuh `projects` — dua layar
+yang saling membantah, dan tidak satu pun menyebut penyebabnya.
+
+Aturannya sekarang: **hanya tabel inti yang boleh memicu `SetupNeeded`.** Apa pun yang
+datang dari migrasi lebih baru dibaca lewat `optional()`, yang mengembalikan null saat
+query gagal, dan halaman kembali ke perilaku sebelum fitur itu ada.
+
+Halaman `/setup` juga memeriksa migrasi terbaru sendiri, dan menyebut nama berkas yang
+harus dijalankan. Ditandai tanda tanya, bukan silang: kekurangan ini bukan kegagalan —
+aplikasi tetap jalan, hanya kembali ke perilaku lama.
 
 ### Isi denah ditentukan view, bukan pasangan (level, kind)
 

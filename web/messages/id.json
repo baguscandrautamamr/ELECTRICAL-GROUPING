@@ -159,7 +159,9 @@
     "redirectUrl": "Redirect URL yang dipakai tautan masuk",
     "redirectHint": "Alamat ini harus ada di Authentication → URL Configuration → Redirect URLs di Supabase. Tanpa itu tautan masuk ditolak.",
     "backToLogin": "Kembali ke halaman masuk",
-    "link": "Periksa penyiapan"
+    "link": "Periksa penyiapan",
+    "latestMigration": "Migrasi terbaru",
+    "latestMigrationHint": "Tabel layout_devices belum ada. Jalankan 20260729010000_layout_devices.sql lalu 20260729020000_layout_device_counts.sql di SQL Editor. Aplikasi tetap jalan tanpa keduanya, tapi denah emergency/exit masih memuat isi yang sama dengan denah lighting."
   },
   "errors": {
     "unknown": "Perubahan tidak tersimpan. Coba lagi.",
