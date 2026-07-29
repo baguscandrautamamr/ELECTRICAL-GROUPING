@@ -74,7 +74,35 @@ Terakhir, di Supabase: **Authentication → URL Configuration**, isi Site URL de
 `https://domain-anda.vercel.app` dan tambahkan `https://domain-anda.vercel.app/**`
 ke daftar Redirect URLs. Tanpa itu tautan masuk ditolak.
 
-### Kalau web-nya tidak jalan
+### Kalau yang keluar 404 dari Vercel, bukan dari app
+
+Bedakan dulu dua 404 yang kelihatan mirip:
+
+| Yang terlihat | Asalnya | Artinya |
+| --- | --- | --- |
+| Kotak putih, `404: NOT_FOUND`, `Code: NOT_FOUND`, ada `ID: sin1::...` | Vercel | Tidak ada deployment di **hostname itu** |
+| Halaman bertema CircuitSync, "Halaman itu tidak ada" | app kita | Deployment jalan, rutenya saja salah |
+
+404 yang pertama hampir selalu berarti **hostname-nya keliru**, bukan app-nya
+rusak. Nama domain `*.vercel.app` mengikuti nama **project di Vercel**, yang belum
+tentu sama dengan nama repo, dan berubah kalau project pernah di-rename.
+
+Cara memastikan domain yang benar:
+
+- Vercel → project → **Domains**; atau ambil dari kartu deployment terbaru.
+- Atau lihat field **homepage** di halaman GitHub repo ini — integrasi Vercel
+  mengisinya sendiri dengan domain production.
+
+`app/[locale]` tidak punya rute `/` sendiri; `/` dilayani redirect di `proxy.ts`
+menuju `/{locale}/login`. Jadi kalau hostname-nya benar dan deployment-nya jadi,
+membuka `/` akan berakhir di halaman login — bukan 404. Sudah diperiksa di build
+production: `/` menjawab 307 ke `/id/login`.
+
+Kalau tab **Deployments** kosong atau semuanya berlabel *Preview*, yang salah
+Production Branch. Kalau ada Production berlabel **Error**, biasanya Root
+Directory belum diarahkan ke `web`.
+
+### Kalau web-nya jalan tapi isinya kosong atau gagal
 
 Buka `https://domain-anda.vercel.app/id/setup` — tautannya juga ada di bawah kotak
 login. Halaman itu memeriksa empat hal dari dalam deployment yang bermasalah:
