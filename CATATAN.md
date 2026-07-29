@@ -551,6 +551,31 @@ supaya model yang belum ditarik ulang add-in versi ini tidak kehilangan apa yang
 sudah dikerjakan dari web. Yang belum ditarik ulang hanya kehilangan circuit yang
 dibuat langsung di Revit.
 
+### Add-in lebih baru daripada database adalah keadaan biasa
+
+Keduanya dipasang terpisah: ZIP add-in dipasang user dari Actions, migrasi
+ditembakkan lewat `supabase db push`. Selisih di antara keduanya bukan kemungkinan
+jauh — ia terjadi pada percobaan pertama kolom `panel_unique_id`, dan gejalanya
+seluruh tarikan model gagal dengan
+
+```
+http_400 — Could not find the 'panel_unique_id' column of 'devices' in the schema cache
+```
+
+Satu kolom baru menjatuhkan 639 device yang tidak ada hubungannya dengan kolom itu.
+
+`SupabaseClient.WriteAsync` sekarang membaca `PGRST204`, membuang kolom yang ditolak
+dari body, lalu mengulang permintaannya. Sisanya tetap masuk, dan begitu migrasinya
+diterapkan payload penuh kembali terkirim dengan sendirinya — tanpa memasang ulang
+add-in. Batasnya empat kolom, supaya database yang benar-benar salah tetap berhenti
+sebagai kegagalan alih-alih terkelupas kolom demi kolom.
+
+Yang dibuang **disebutkan** di log aktivitas, tidak dibuang diam-diam: fitur yang
+tidak jalan tanpa satu pun petunjuk kenapa adalah kegagalan yang paling lama tidak
+ketahuan. Logikanya ada di `PostgrestSchema` di Core — tidak menyentuh HTTP, jadi
+bisa dites di runner Linux, dan justru perilaku ini yang perlu dites karena ia hanya
+berjalan pada keadaan yang jarang ada di mesin orang yang menulis kodenya.
+
 ### Sisa pekerjaan dihitung dua kali, dengan sengaja
 
 `unconnected_devices` memecah per denah, dan satu lampu bisa tampak di dua denah

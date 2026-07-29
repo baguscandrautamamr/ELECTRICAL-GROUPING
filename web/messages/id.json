@@ -178,7 +178,7 @@
     "backToLogin": "Kembali ke halaman masuk",
     "link": "Periksa penyiapan",
     "latestMigration": "Migrasi terbaru",
-    "latestMigrationHint": "Tabel layout_devices belum ada. Jalankan 20260729010000_layout_devices.sql lalu 20260729020000_layout_device_counts.sql di SQL Editor. Aplikasi tetap jalan tanpa keduanya, tapi denah emergency/exit masih memuat isi yang sama dengan denah lighting."
+    "latestMigrationHint": "Kolom devices.panel_unique_id belum ada. Jalankan 20260729030000_device_panel.sql di SQL Editor, lalu tarik ulang model dari add-in. Aplikasi tetap jalan tanpa itu, tapi isi panel hanya memuat circuit yang dibuat lewat web — yang dibuat langsung di Revit tidak ikut terlihat."
   },
   "errors": {
     "unknown": "Perubahan tidak tersimpan. Coba lagi.",

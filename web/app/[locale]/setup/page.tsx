@@ -86,9 +86,13 @@ async function checkSchema(): Promise<{state: State; detail: string; cause: 'mis
 async function checkLatestMigration(): Promise<{state: State; detail: string; missing: boolean}> {
   try {
     const supabase = await createClient();
-    const {error} = await supabase.from('layout_devices').select('project_id').limit(1);
 
-    if (!error) return {state: 'ok', detail: 'layout_devices', missing: false};
+    // Diarahkan ke migrasi paling baru, bukan yang pernah paling baru. Kolom, bukan
+    // tabel: `panel_unique_id` yang datang belakangan, dan add-in mengirimnya di setiap
+    // tarikan model — kalau ia belum ada, itu yang paling dulu terasa.
+    const {error} = await supabase.from('devices').select('panel_unique_id').limit(1);
+
+    if (!error) return {state: 'ok', detail: 'devices.panel_unique_id', missing: false};
 
     const missing = classifyError(error) === 'schema';
     return {
