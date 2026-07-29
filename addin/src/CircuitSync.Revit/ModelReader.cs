@@ -46,12 +46,15 @@ public static class ModelReader
             });
         }
 
+        var (layouts, layoutDevices) = ReadLayouts(doc);
+
         return new ModelSnapshot
         {
             Levels = levels,
-            Layouts = ReadLayouts(doc),
+            Layouts = layouts,
             Panels = panels,
             Devices = devices,
+            LayoutDevices = layoutDevices,
             DeviceSystems = systems,
         };
     }
@@ -60,9 +63,10 @@ public static class ModelReader
     /// View denah yang dipakai sebagai halaman kerja di web. Yang memutuskan view mana
     /// yang ikut adalah <see cref="LayoutFilter"/> di Core; di sini hanya penerjemahan.
     /// </summary>
-    private static List<LayoutRow> ReadLayouts(Document doc)
+    private static (List<LayoutRow> Rows, List<LayoutDeviceRow> Members) ReadLayouts(Document doc)
     {
         var rows = new List<LayoutRow>();
+        var members = new List<LayoutDeviceRow>();
 
         var views = new FilteredElementCollector(doc)
             .OfClass(typeof(ViewPlan))
@@ -99,12 +103,54 @@ public static class ModelReader
                 CropMaxXMm = crop?.MaxX,
                 CropMaxYMm = crop?.MaxY,
             });
+
+            foreach (var deviceId in VisibleDeviceIds(doc, view, kind))
+            {
+                members.Add(new LayoutDeviceRow
+                {
+                    LayoutUniqueId = view.UniqueId,
+                    DeviceUniqueId = deviceId,
+                });
+            }
         }
 
-        return rows
+        return (rows
             .OrderBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
             .Select((row, index) => row with { SortOrder = index })
-            .ToList();
+            .ToList(), members);
+    }
+
+    /// <summary>
+    /// Device yang benar-benar tampak di satu view denah.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="FilteredElementCollector(Document, ElementId)"/> menyaring persis
+    /// seperti yang dilihat mata di Revit: filter view, visibility per kategori, crop
+    /// region, dan fase semuanya ikut berlaku. Itulah sebabnya denah lighting dan denah
+    /// emergency/exit di lantai yang sama menghasilkan daftar yang berbeda, padahal
+    /// pasangan (level, kind) keduanya identik.
+    /// </remarks>
+    private static IEnumerable<string> VisibleDeviceIds(Document doc, View view, string kind)
+    {
+        var category = kind == DeviceKind.Receptacle
+            ? BuiltInCategory.OST_ElectricalFixtures
+            : BuiltInCategory.OST_LightingFixtures;
+
+        try
+        {
+            return new FilteredElementCollector(doc, view.Id)
+                .OfCategory(category)
+                .WhereElementIsNotElementType()
+                .OfClass(typeof(FamilyInstance))
+                .Select(element => element.UniqueId)
+                .ToList();
+        }
+        catch (Autodesk.Revit.Exceptions.ArgumentException)
+        {
+            // View yang belum pernah dibuka atau tidak mendukung pengumpulan per view.
+            // Layout-nya tetap dikirim; isinya saja yang tidak diketahui.
+            return [];
+        }
     }
 
     /// <summary>

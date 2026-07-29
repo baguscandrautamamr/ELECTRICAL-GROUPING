@@ -101,6 +101,22 @@ public sealed record LayoutRow
     [JsonPropertyName("sort_order")] public int SortOrder { get; init; }
 }
 
+/// <summary>
+/// Satu device yang tampak di satu layout.
+/// </summary>
+/// <remarks>
+/// Isi sebuah denah ditentukan view Revit-nya — filter view, visibility kategori,
+/// crop region, fase — bukan pasangan (level, kind). Satu lantai bisa punya denah
+/// lighting dan denah emergency/exit sekaligus; keduanya berlantai dan berjenis sama,
+/// jadi tanpa tabel ini web menampilkan isi yang identik di dua halaman berbeda.
+/// </remarks>
+public sealed record LayoutDeviceRow
+{
+    [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
+    [JsonPropertyName("layout_unique_id")] public string LayoutUniqueId { get; init; } = "";
+    [JsonPropertyName("device_unique_id")] public string DeviceUniqueId { get; init; } = "";
+}
+
 public sealed record DeviceRow
 {
     [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
@@ -212,6 +228,9 @@ public sealed record ModelSnapshot
     public IReadOnlyList<LayoutRow> Layouts { get; init; } = [];
     public IReadOnlyList<PanelRow> Panels { get; init; } = [];
     public IReadOnlyList<DeviceRow> Devices { get; init; } = [];
+
+    /// <summary>Device yang tampak di tiap layout, dibaca per view Revit.</summary>
+    public IReadOnlyList<LayoutDeviceRow> LayoutDevices { get; init; } = [];
 
     /// <summary>
     /// <c>revit_unique_id</c> device → <c>UniqueId</c> ElectricalSystem yang memuatnya.

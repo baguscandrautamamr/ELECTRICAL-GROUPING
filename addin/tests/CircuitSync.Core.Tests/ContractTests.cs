@@ -57,6 +57,19 @@ public class ContractTests
     }
 
     [Fact]
+    public void Layout_device_serialises_to_the_agreed_columns()
+    {
+        var fields = Fields(new LayoutDeviceRow
+        {
+            ProjectId = Guid.NewGuid(),
+            LayoutUniqueId = "view-1",
+            DeviceUniqueId = "lamp-1",
+        });
+
+        AssertSameSet(["project_id", "layout_unique_id", "device_unique_id"], fields);
+    }
+
+    [Fact]
     public void Panel_serialises_to_the_agreed_columns()
     {
         var fields = Fields(new PanelRow

@@ -55,6 +55,19 @@ export type Layout = {
   sort_order: number;
 };
 
+/**
+ * Satu device yang tampak di satu layout.
+ *
+ * Isi sebuah denah ditentukan view Revit-nya — filter view, visibility kategori, crop
+ * region, fase — bukan pasangan (level, kind). Satu lantai bisa punya denah lighting
+ * dan denah emergency/exit sekaligus, dan keduanya berlantai serta berjenis sama.
+ */
+export type LayoutDevice = {
+  project_id: string;
+  layout_unique_id: string;
+  device_unique_id: string;
+};
+
 export type Device = {
   project_id: string;
   revit_unique_id: string;

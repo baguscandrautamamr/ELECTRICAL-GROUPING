@@ -234,6 +234,36 @@ akhirnya berhasil, diam-diam tidak berefek.
 Dijaga oleh `Devices_with_and_without_nulls_carry_the_same_keys` dan
 `Panels_with_and_without_nulls_carry_the_same_keys` di `ContractTests`.
 
+### Isi denah ditentukan view, bukan pasangan (level, kind)
+
+Satu lantai punya lebih dari satu denah lighting. Di model FG WAREHOUSE ada
+`… - LIGHTING SYSTEM LAYOUT PLAN` dan `… - EMERGENCY & EXIT LIGHTING SYSTEM
+LAYOUT PLAN`, dan keduanya berlantai sama serta — karena `LayoutFilter` melihat
+kata "LIGHTING" — berjenis sama. Selama web memilih device lewat pasangan
+(`level_key`, `kind`), kedua halaman itu menampilkan isi yang **persis sama**,
+termasuk lampu emergency dan exit yang di Revit justru disembunyikan dari denah
+lighting biasa.
+
+Yang menentukan isi sebuah denah adalah view Revit-nya: filter view, visibility
+per kategori, crop region, dan fase. `ModelReader.VisibleDeviceIds` membacanya
+lewat `FilteredElementCollector` yang dibatasi `view.Id` — penyaringnya sama
+persis dengan yang dilihat mata di Revit — dan hasilnya disimpan di tabel
+`layout_devices`.
+
+Foreign key-nya composite dan cascade dua arah, jadi sapuan snapshot yang
+menghapus layout atau device ikut membawa keanggotaannya; tidak ada baris yatim
+yang menunjuk view atau device yang sudah tidak ada.
+
+Web jatuh kembali ke perilaku lama **hanya** kalau project itu belum punya satu
+pun baris `layout_devices` — tanda model terakhir ditarik add-in versi lama.
+Pemeriksaannya per project, bukan per layout, supaya denah yang memang kosong
+tidak diam-diam berubah jadi "tampilkan seluruh isi lantai".
+
+Konsekuensi yang diterima: device yang tampak di sebuah view tapi levelnya beda
+tidak ikut, karena query dasarnya masih disaring `level_key` milik layout. Itu
+menjaga jumlah baris tetap terbatas — PostgREST memotong hasil di seribu baris
+tanpa memberi tahu, dan menarik seluruh device satu project bisa melewatinya.
+
 ### Write-back setelah apply memakai PATCH, bukan upsert
 
 Konsekuensi langsung dari keputusan di atas, dan sempat merusak data.
