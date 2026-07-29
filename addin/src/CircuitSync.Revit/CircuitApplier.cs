@@ -157,6 +157,7 @@ public static class CircuitApplier
                     RevitUniqueId = e.UniqueId,
                     Status = DeviceStatus.Connected,
                     CircuitNumber = number,
+                    PanelUniqueId = circuit.PanelUniqueId,
                 }).ToList(),
             };
         }

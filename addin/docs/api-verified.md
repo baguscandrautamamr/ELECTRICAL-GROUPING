@@ -49,6 +49,12 @@ ini benar untuk versi Revit yang tercantum.
 **Tidak ada** `ElectricalSystem.BaseEquipment` di 2025 — kelayakan panel dibaca dari
 `PanelName`, bukan dari properti itu.
 
+Konsekuensinya untuk kolom `devices.panel_unique_id`: satu-satunya jembatan dari
+circuit ke baris panel adalah **namanya**, dicocokkan terhadap
+`RBS_ELEC_PANEL_NAME` panel yang sudah dibaca di dokumen yang sama. Tidak ada
+anggota API yang memberi elemen panelnya langsung. Nama yang muncul dua kali
+dipetakan ke null, bukan ditebak — lihat `ModelReader.PanelIdsByName`.
+
 ### Mengubah circuit yang sudah ada
 
 Circuit yang isinya diubah dari web dibongkar lalu dibuat ulang — bukan ditambal.

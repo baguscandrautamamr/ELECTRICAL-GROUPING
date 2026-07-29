@@ -99,6 +99,73 @@ begin
 end;
 $$;
 
+-- ------------------------------------------------ isi panel dan sisa pekerjaan
+--
+-- Dua jalur harus sampai ke jawaban yang sama. Jalur utama: panel yang dibaca
+-- add-in langsung dari model, tersimpan di `devices.panel_unique_id`. Jalur
+-- cadangan: circuit yang pernah diterapkan lewat web, dipakai selama model belum
+-- ditarik ulang add-in versi ini.
+
+-- Jalur utama — dua lampu tersambung ke LP-1 lewat (LC)1.
+update public.devices
+   set status = 'connected', panel_unique_id = 'panel-uid-1', circuit_number = '(LC)1'
+ where project_id = :pid and revit_unique_id in ('dev-1', 'dev-2');
+
+-- Jalur cadangan — receptacle yang tersambung di model, tapi panelnya hanya
+-- diketahui web lewat circuit yang sudah diterapkan.
+insert into public.devices (project_id, revit_unique_id, kind, level_key, room_name,
+                            family_key, x_mm, y_mm, va, status)
+values (:pid, 'dev-4', 'receptacle', 'L1', 'Ruang Rapat', 'Outlet::Duplex', 2800, 2000, 180, 'connected');
+
+insert into public.circuits (id, project_id, panel_unique_id, kind, device_unique_ids,
+                             status, circuit_number)
+values ('eeeeeeee-0000-4000-8000-000000000005', :pid, 'panel-uid-1', 'receptacle',
+        array['dev-4'], 'applied', '(LC)3');
+
+do $$
+declare
+  v_lighting bigint;
+  v_receptacle bigint;
+begin
+  select devices into v_lighting from public.panel_contents(
+    'cccccccc-0000-4000-8000-000000000003')
+   where panel_unique_id = 'panel-uid-1' and circuit_number = '(LC)1';
+
+  select devices into v_receptacle from public.panel_contents(
+    'cccccccc-0000-4000-8000-000000000003')
+   where panel_unique_id = 'panel-uid-1' and circuit_number = '(LC)3';
+
+  assert v_lighting = 2, 'isi panel dari model tidak terbaca';
+  assert v_receptacle = 1, 'isi panel dari circuit yang sudah diterapkan tidak terbaca';
+
+  -- Circuit yang masih usulan bukan isi panel. dev-3 belum tersambung ke mana pun,
+  -- jadi tidak boleh muncul hanya karena ada baris circuit yang menyebutnya.
+  assert (select coalesce(sum(devices), 0) from public.panel_contents(
+           'cccccccc-0000-4000-8000-000000000003')) = 3,
+         'panel memuat device yang belum diterapkan';
+end;
+$$;
+
+do $$
+begin
+  -- Tersisa dev-3, satu-satunya yang masih unwired.
+  assert public.unconnected_total('cccccccc-0000-4000-8000-000000000003') = 1,
+         'sisa pekerjaan salah hitung';
+
+  assert (select devices from public.unconnected_devices(
+           'cccccccc-0000-4000-8000-000000000003')
+           where kind = 'receptacle' and status = 'unwired') = 1,
+         'device belum tersambung tidak terpecah per jenis';
+
+  -- Belum ada baris layout_devices, jadi dev-3 tidak tampak di denah mana pun —
+  -- dan justru itu yang harus tetap terhitung, bukan hilang lewat join.
+  assert (select count(*) from public.unconnected_devices(
+           'cccccccc-0000-4000-8000-000000000003')
+           where layout_unique_id is null) = 1,
+         'device di luar denah hilang dari sisa pekerjaan';
+end;
+$$;
+
 -- ---------------------------------------------------------------- user B
 set request.jwt.claim.sub = 'bbbbbbbb-0000-4000-8000-000000000002';
 
@@ -110,6 +177,18 @@ begin
   assert (select count(*) from public.circuits) = 0, 'B melihat circuit orang lain';
   assert (select count(*) from public.sync_jobs) = 0, 'B melihat job orang lain';
   assert (select count(*) from public.profiles) = 1, 'B melihat profil di luar projectnya';
+
+  -- Fungsi ringkasan berjalan sebagai pemanggilnya, jadi RLS tabel di dalamnya tetap
+  -- berlaku. Kalau salah satunya pernah dibuat `security definer`, di sinilah bocornya
+  -- ketahuan — bukan di production.
+  assert (select count(*) from public.panel_contents(
+           'cccccccc-0000-4000-8000-000000000003')) = 0,
+         'B melihat isi panel project orang lain';
+  assert (select count(*) from public.unconnected_devices(
+           'cccccccc-0000-4000-8000-000000000003')) = 0,
+         'B melihat sisa pekerjaan project orang lain';
+  assert public.unconnected_total('cccccccc-0000-4000-8000-000000000003') = 0,
+         'B melihat jumlah sisa pekerjaan project orang lain';
 end;
 $$;
 
@@ -136,7 +215,7 @@ do $$
 declare
   v_failed boolean := false;
 begin
-  assert (select count(*) from public.devices) = 3, 'viewer tidak bisa baca device';
+  assert (select count(*) from public.devices) = 4, 'viewer tidak bisa baca device';
   begin
     update public.devices set room_name = 'diubah viewer'
      where project_id = 'cccccccc-0000-4000-8000-000000000003';
