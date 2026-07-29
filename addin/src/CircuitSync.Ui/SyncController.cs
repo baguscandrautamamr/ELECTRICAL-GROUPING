@@ -493,7 +493,7 @@ public sealed class SyncController : IDisposable
     }
 
     private void LogCloud(CloudException ex) =>
-        Log(LogKind.Error, ex.Message is "network" or "timeout" ? "log.network" : "log.job_error", ex.Message);
+        Log(LogKind.Error, ex.Message is "network" or "timeout" ? "log.network" : "log.job_error", ex.Describe());
 
     private void Log(LogKind kind, string key, params object?[] args)
     {

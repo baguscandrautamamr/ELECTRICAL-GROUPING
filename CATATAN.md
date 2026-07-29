@@ -204,6 +204,28 @@ Yang membuatnya benar adalah trigger `devices_touch`, `panels_touch`, dan
 `levels_touch` di migrasi. **Kalau trigger itu dihapus, sapuan akan menghapus
 device yang masih hidup.** Jangan sentuh yang satu tanpa yang lain.
 
+### Null ikut dikirim ke PostgREST
+
+`CircuitSyncJson.Options` **tidak** memakai `JsonIgnoreCondition.WhenWritingNull`,
+dan itu bukan kelalaian.
+
+PostgREST menolak bulk insert yang objek-objeknya tidak sekunci, dengan
+`400 PGRST102 "All object keys must match"`. Kalau null dibuang saat serialisasi,
+device yang punya `room_name` dan device yang tidak akan menghasilkan bentuk objek
+yang berbeda di dalam satu array — dan **seluruh tarikan model gagal**, tanpa satu
+baris pun masuk. Gejalanya di add-in cuma `Rencana ditolak: http_400`, yang tidak
+menyebut kolom apa pun. Model nyata hampir pasti memicunya: cukup satu panel tanpa
+distribution system, atau satu lampu tanpa nilai VA.
+
+Alasan kedua: snapshot adalah pengganti penuh. Revit yang jadi sumber kebenaran
+untuk kolom-kolom ini, jadi device yang room-nya dihapus di Revit harus menjadi
+null di database. Membuang null membuat nilai lama menetap selamanya — dan membuat
+patch yang bermaksud mengosongkan kolom, seperti membersihkan `error` saat job
+akhirnya berhasil, diam-diam tidak berefek.
+
+Dijaga oleh `Devices_with_and_without_nulls_carry_the_same_keys` dan
+`Panels_with_and_without_nulls_carry_the_same_keys` di `ContractTests`.
+
 ### Kunci pesan, bukan teks, di kolom `error`
 
 Add-in menulis kunci seperti `plan.panel_not_usable` ke `circuits.error`, bukan
