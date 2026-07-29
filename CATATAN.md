@@ -62,18 +62,33 @@ Di Vercel: **Add New → Project → Import** repo ini, lalu:
 
 Environment variable **tidak wajib** — `web/lib/supabase/config.ts` sudah memuat
 URL project dan publishable key sebagai nilai bawaan, dan keduanya memang publik.
-Yang sebaiknya diisi setelah domain jadi:
+Kalau diisi, ingat bahwa `NEXT_PUBLIC_*` dibaca **saat build**: mengubahnya di
+dashboard tidak berpengaruh sampai ada deploy berikutnya.
 
-```
-NEXT_PUBLIC_SITE_URL = https://domain-anda.vercel.app
-```
+`NEXT_PUBLIC_SITE_URL` juga tidak wajib lagi. Tautan masuk disusun di browser dari
+asal halaman yang sedang dibuka (lihat `siteUrl()`), jadi ia selalu menunjuk domain
+yang benar-benar dipakai user. Isi hanya kalau ingin memaksa satu domain tertentu —
+dan jangan pernah mengisinya dengan `http://localhost:3000` di Vercel.
 
-Tanpa itu, tautan masuk yang dikirim lewat email dibangun dari `VERCEL_URL`, yang
-berubah setiap deploy preview.
+Terakhir, di Supabase: **Authentication → URL Configuration**, isi Site URL dengan
+`https://domain-anda.vercel.app` dan tambahkan `https://domain-anda.vercel.app/**`
+ke daftar Redirect URLs. Tanpa itu tautan masuk ditolak.
 
-Terakhir, di Supabase: **Authentication → URL Configuration**, tambahkan
-`https://domain-anda.vercel.app/auth/callback` ke daftar Redirect URLs. Tanpa itu
-tautan masuk ditolak.
+### Kalau web-nya tidak jalan
+
+Buka `https://domain-anda.vercel.app/id/setup` — tautannya juga ada di bawah kotak
+login. Halaman itu memeriksa empat hal dari dalam deployment yang bermasalah:
+apakah env var terbaca atau diam-diam jatuh ke nilai bawaan, apakah Auth Supabase
+menjawab dengan key itu, apakah tabelnya sudah ada, dan redirect URL apa yang
+sebenarnya dipakai tautan masuk. Halaman ini sengaja tidak dijaga login — ia justru
+dibutuhkan saat login belum bisa dilewati.
+
+Dua kegagalan paling sering, dan tandanya di halaman itu:
+
+| Tanda | Sebab | Perbaikan |
+| --- | --- | --- |
+| "Tabel database sudah ada" merah, kode `42P01`/`PGRST205` | migrasi belum dijalankan | langkah 1 di atas |
+| "Auth Supabase menjawab" merah | URL atau key salah | salin ulang dari Project Settings → API |
 
 ### 3. Uji add-in di Revit 2025
 

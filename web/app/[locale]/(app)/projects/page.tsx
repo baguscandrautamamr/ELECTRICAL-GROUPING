@@ -1,8 +1,10 @@
 import {ChevronRight} from 'lucide-react';
 import {getFormatter, getTranslations} from 'next-intl/server';
 import {Badge, Card, CardHeader, Empty} from '@/components/ui';
+import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
 import type {Project} from '@/lib/contract';
+import {classifyError} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 import {NewProjectForm} from './new-project-form';
 
@@ -12,10 +14,15 @@ export default async function ProjectsPage() {
   const supabase = await createClient();
 
   // RLS yang membatasi ini ke project milik user; tidak ada filter owner di query.
-  const {data} = await supabase
+  const {data, error} = await supabase
     .from('projects')
     .select('id, name, owner_id, created_at, updated_at')
     .order('updated_at', {ascending: false});
+
+  // Query yang gagal pernah berakhir sebagai daftar kosong di sini, jadi database
+  // yang belum dimigrasi tampil persis seperti akun baru. Dibedakan sekarang.
+  const problem = classifyError(error);
+  if (problem) return <SetupNeeded problem={problem} />;
 
   const projects = (data ?? []) as Project[];
 

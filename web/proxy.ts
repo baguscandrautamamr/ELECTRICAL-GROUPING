@@ -36,9 +36,12 @@ export default async function proxy(request: NextRequest) {
     ? segments[1]!
     : routing.defaultLocale;
 
+  // `/setup` melaporkan kenapa aplikasi tidak jalan. Halaman itu justru dibutuhkan
+  // saat login belum bisa dilewati, jadi ia tidak boleh ikut dijaga.
+  const openToPublic = segments[2] === 'login' || segments[2] === 'setup';
   const onLogin = segments[2] === 'login';
 
-  if (!user && !onLogin) {
+  if (!user && !openToPublic) {
     return redirectKeepingCookies(request, response, `/${locale}/login`);
   }
 

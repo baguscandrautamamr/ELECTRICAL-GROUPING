@@ -3,8 +3,10 @@ import {getTranslations} from 'next-intl/server';
 import type {Metadata} from 'next';
 import {notFound} from 'next/navigation';
 import {Badge, Card, CardHeader, Empty, Notice} from '@/components/ui';
+import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
 import {DEVICE_KINDS, type Device, type Level, type Panel, type Project} from '@/lib/contract';
+import {firstProblem} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 
 type Params = {params: Promise<{projectId: string}>};
@@ -20,6 +22,9 @@ async function load(projectId: string) {
   ]);
 
   return {
+    // Tanpa ini, database yang belum dimigrasi berakhir sebagai 404: project-nya
+    // null bukan karena tidak ada, tapi karena tabelnya belum ada.
+    problem: firstProblem(project.error, levels.error, panels.error, devices.error),
     project: project.data as Project | null,
     levels: (levels.data ?? []) as Level[],
     panels: (panels.data ?? []) as Panel[],
@@ -35,7 +40,9 @@ export async function generateMetadata({params}: Params): Promise<Metadata> {
 
 export default async function ProjectPage({params}: Params) {
   const {projectId} = await params;
-  const {project, levels, panels, devices} = await load(projectId);
+  const {problem, project, levels, panels, devices} = await load(projectId);
+
+  if (problem) return <SetupNeeded problem={problem} />;
 
   // RLS mengembalikan nol baris untuk project yang bukan milik user, jadi
   // "tidak ada" dan "bukan milik saya" sengaja tidak dibedakan di sini.

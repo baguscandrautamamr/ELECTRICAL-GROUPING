@@ -19,13 +19,14 @@ kedua repo — kalau berubah di sini, ubah juga di sana pada commit yang sama.
 app/
   [locale]/
     (auth)/login/
+    setup/                                         diagnosa penyiapan, tanpa login
     (app)/projects/
     (app)/projects/[projectId]/[levelId]/[kind]/   halaman denah
 components/
   plan/          kanvas SVG, marker device, seleksi
   circuits/      daftar circuit, panel picker
 lib/
-  supabase/      client browser dan server
+  supabase/      client browser dan server, config, klasifikasi error query
   contract.ts    tipe bersama, cerminan repo add-in
 messages/
   id.json  en.json
@@ -65,6 +66,11 @@ komponen. Cek setiap layar baru di kedua mode sebelum bilang selesai.
 
 **7. Jangan tambah library kanvas.** SVG di React sudah cukup sampai sekitar 2000
 titik per lantai. Kalau sudah terasa berat, ukur dulu, baru diskusikan.
+
+**8. Query yang gagal tidak boleh berakhir jadi layar kosong.** `data ?? []` di
+atas `error` yang tidak diperiksa membuat database yang belum dimigrasi tampil
+persis seperti akun baru. Periksa `error` lewat `lib/supabase/errors.ts` dan
+tampilkan `<SetupNeeded>`, bukan ajakan bertindak yang tidak akan jalan.
 
 ## Kontrak data
 
