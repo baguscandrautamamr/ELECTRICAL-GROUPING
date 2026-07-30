@@ -614,20 +614,59 @@ pembagian yang kelihatan masuk akal padahal salah, dan itu jenis kesalahan yang
 paling lama tidak ketahuan. Jalan keluar sebenarnya adalah tabel `rooms` beserta
 batas geometrinya — belum ada.
 
-### Dua hal yang masih jelek di pratinjau wiring
+### Bentuk garis adalah pilihan user, dan satu kaki bisa punya dua bentuk
 
-Keduanya ditemukan justru karena pratinjaunya dibuat lebih dulu, dan keduanya
-**belum diperbaiki** — obatnya keputusan gambar, bukan keputusan kode.
+Percobaan pertama memperlakukan chamfer sebagai bentuk tunggal untuk seluruh denah,
+dan hasilnya tidak menyerupai gambar acuan sama sekali: chamfer di atas diagonal
+**menghapus** bentuk silangnya — sudutnya dipotong dan X berubah jadi siku membulat.
 
-Ruangan berkolom banyak menghasilkan garis yang melewati lampu milik kaki saklar
-lain. Itu akibat langsung aturan papan catur, dan di ruangan dua kolom — pola yang
-paling sering dipakai — tidak pernah terjadi.
+Yang benar dua gaya, dan gaya dipilih user, bukan disimpulkan dari bentuk ruangan:
 
-Deretan lampu yang segaris, misalnya koridor, membuat kedua kaki saklar jatuh di
-garis yang sama persis dan saling menimpa. Yang membedakannya tinggal pola garis
-putus-putus. Obatnya menggeser salah satu kaki tegak lurus terhadap deretnya, tapi
-itu berarti garis tidak lagi lewat titik tengah lampu — perlu diputuskan dulu apakah
-itu yang diinginkan di gambar kerja.
+| | Silang | Siku |
+| --- | --- | --- |
+| 2 kolom | X lurus | lajur tegak, sudut 45° |
+| 3 kolom | X di pasangan + kolom sisa siku | lajur tegak, sudut 45° |
+
+Kolom diambil berpasangan, jadi aturannya jalan untuk berapa pun kolomnya — bukan
+cuma 2 dan 3. Kolom ganjil yang tersisa dirangkai tegak lalu **ditempelkan** ke kaki
+yang ujungnya paling dekat, bukan dijadikan saklar ketiga: yang diminta dua saklar,
+dan menambah kaki hanya karena ruangannya berkolom ganjil mengubah jumlah saklar
+tanpa ada yang memintanya.
+
+Konsekuensinya satu kaki bisa memuat dua bentuk sekaligus — bagian menyilang lurus,
+kolom sisa siku — jadi `Leg.straight` menghitung berapa titik pertama yang digambar
+lurus. Tanpa itu sambungannya memotong ruangan secara diagonal alih-alih menyusur
+tepi seperti di gambar acuan.
+
+### Garis memutar karena papan catur, bukan karena estetika
+
+Di gaya siku, dua lampu berurutan dalam satu kaki hampir selalu diselingi lampu milik
+kaki sebelah — itu akibat langsung pembagian papan catur. Menariknya lurus berarti
+garis menembus lampu yang tidak ada hubungannya dengan kaki itu: benar secara
+topologi, salah dibaca sebagai gambar kerja.
+
+Karena itu tiap ruas diuji dulu, lalu memutar lewat lajur di sisi **luar** ruangan
+kalau rute langsungnya menyerempet. Sisi luar, bukan sisi dalam: sisi dalam berisi
+kolom lampu berikutnya, jadi memutar ke sana hanya menukar satu halangan dengan
+halangan lain.
+
+Ujinya dijalankan pada rute **yang benar-benar digambar**, bukan pada garis lurus
+antar lampu. Versi pertama menguji garis lurusnya dan meloloskan empat ruas yang
+sebenarnya menyerempet: chamfer memotong sudut, dan potongan itu lewat dekat lampu
+yang garis lurusnya sendiri jauh.
+
+Yang masih tersisa: ruas pendekatan terakhir menyusur baris lampu, dan di situ ia
+bisa lewat sekitar 0,25 × jarak antar lampu dari lampu kaki lain. Gambar acuan
+menyelesaikannya dengan memutar seluruh sambungan ke luar ruangan — belum dikerjakan,
+karena itu berarti perutean keliling penuh, bukan penghindaran per ruas.
+
+### Kolom sisa membuat kedua saklar tidak sama banyak
+
+Ruangan 3 kolom × 4 baris di gaya silang menghasilkan 8 lampu di satu saklar dan 4 di
+saklar lain, karena kolom sisa ditempelkan seluruhnya ke satu kaki. Itu mengikuti
+gambar acuan, tapi berarti kedua saklar tidak lagi menerangi separuh-separuh. Kalau
+keseimbangan lebih penting daripada kemiripan gambar, yang perlu diubah adalah cara
+kolom sisa dibagi — bukan cara ia digambar.
 
 ---
 
