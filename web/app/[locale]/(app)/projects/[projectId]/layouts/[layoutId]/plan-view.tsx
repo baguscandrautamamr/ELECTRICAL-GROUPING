@@ -9,8 +9,10 @@ import {ConnectedDevices} from '@/components/plan/connected-devices';
 import {Legend} from '@/components/plan/legend';
 import {PlanCanvas} from '@/components/plan/plan-canvas';
 import {SystemBrowser} from '@/components/plan/system-browser';
+import {WiringPanel} from '@/components/plan/wiring-panel';
 import {Badge, Button, Card, CardHeader, Empty, Notice, Select, cx} from '@/components/ui';
 import type {Circuit, Device, DeviceKind, Layout, Panel} from '@/lib/contract';
+import {DEFAULT_WIRING_OPTIONS, planWiring, type WiringOptions} from '@/lib/wiring';
 import {createCircuit, queueApply, removeCircuit, updateCircuit} from './actions';
 
 /**
@@ -75,6 +77,18 @@ export function PlanView({
   const [pending, startTransition] = useTransition();
   /** Id circuit yang sedang diubah. Null berarti kartu samping sedang membuat yang baru. */
   const [editing, setEditing] = useState<string | null>(null);
+
+  /**
+   * Wiring berdiri sendiri: state-nya tidak bersinggungan dengan seleksi, circuit,
+   * maupun panel di atas. Tertutup secara bawaan, dan selagi tertutup rencananya
+   * tidak dihitung sama sekali.
+   */
+  const [wiringOpen, setWiringOpen] = useState(false);
+  const [wiringOptions, setWiringOptions] = useState<WiringOptions>(DEFAULT_WIRING_OPTIONS);
+  const wiringPlan = useMemo(
+    () => (wiringOpen ? planWiring(devices, wiringOptions) : null),
+    [wiringOpen, devices, wiringOptions]
+  );
 
   const usablePanels = useMemo(() => panels.filter((panel) => panel.is_usable), [panels]);
   const byId = useMemo(
@@ -211,6 +225,7 @@ export function PlanView({
           onSelect={select}
           symbolOverrides={symbolOverrides}
           highlighted={highlighted}
+          wiring={wiringPlan?.runs}
           crop={layout}
         />
 
@@ -443,6 +458,14 @@ export function PlanView({
           circuits={circuits}
           panels={panels}
           onHighlight={(ids) => setPinned(ids.length > 0 ? new Set(ids) : null)}
+        />
+
+        <WiringPanel
+          open={wiringOpen}
+          onToggle={() => setWiringOpen((current) => !current)}
+          options={wiringOptions}
+          onOptionsChange={setWiringOptions}
+          plan={wiringPlan}
         />
 
         <Card>

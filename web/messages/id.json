@@ -120,6 +120,26 @@
     "nothingLeft": "Semua device di denah ini sudah masuk circuit.",
     "noCircuits": "Belum ada circuit di denah ini."
   },
+  "wiring": {
+    "heading": "Wiring per ruangan",
+    "intro": "Garis dihitung dari posisi titik di denah ini: tiap ruangan dibagi ke beberapa saklar secara berselang-seling, jadi satu saklar menerangi ruangan merata separuh.",
+    "runCount": "{count, plural, =0 {Belum ada garis} other {# kaki saklar}}",
+    "lineStyle": "Line style",
+    "lineStyleEmpty": "Belum ada line style",
+    "lineStyleHint": "Daftarnya dibaca add-in dari model. Tarik model dari add-in untuk mengisinya.",
+    "routing": "Bentuk garis",
+    "routing_chamfer": "Siku dengan sudut dipotong",
+    "routing_direct": "Lurus antar titik",
+    "switches": "Jumlah saklar",
+    "switchCount": "{count, plural, other {# saklar}}",
+    "rooms": "Ruangan",
+    "roomUnnamed": "Ruangan {number}",
+    "roomDevices": "{count, plural, other {# titik}}",
+    "inferred": "Dikira-kira dari jarak antar titik",
+    "inferredWarning": "{count, plural, other {# ruangan dikira-kira dari jarak antar titik, karena namanya tidak terbaca dari Revit. Periksa pembagiannya di denah sebelum dipakai.}}",
+    "noRooms": "Belum ada titik yang bisa di-wiring di denah ini.",
+    "previewOnly": "Masih pratinjau. Garis ini belum tersimpan dan belum dikirim ke Revit."
+  },
   "circuits": {
     "heading": "Circuit",
     "draft": "Usulan",
