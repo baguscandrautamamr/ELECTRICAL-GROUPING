@@ -6,6 +6,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Device} from '@/lib/contract';
 import {isSelectable} from '@/lib/contract';
 import {STATUS_STYLE, geometryFor, symbolFor} from '@/lib/symbols';
+import type {WireRun} from '@/lib/wiring';
 
 type Bounds = {minX: number; minY: number; width: number; height: number};
 
@@ -109,10 +110,12 @@ function useLayout(devices: Device[], crop?: Crop) {
     const region = cropBounds(crop);
     if (region) {
       const flipped = region.minY + (region.minY + region.height);
+      const flipY = (y: number) => flipped - y;
       return {
         bounds: region,
         radius: densityRadius(devices, Math.max(Math.max(region.width, region.height) / 90, 60)),
-        place: (device: Device) => ({x: device.x_mm, y: flipped - device.y_mm})
+        flipY,
+        place: (device: Device) => ({x: device.x_mm, y: flipY(device.y_mm)})
       };
     }
 
@@ -129,11 +132,13 @@ function useLayout(devices: Device[], crop?: Crop) {
     };
 
     const flip = minY + maxY;
+    const flipY = (y: number) => flip - y;
 
     return {
       bounds,
       radius: densityRadius(devices, Math.max(Math.max(bounds.width, bounds.height) / 90, 60)),
-      place: (device: Device) => ({x: device.x_mm, y: flip - device.y_mm})
+      flipY,
+      place: (device: Device) => ({x: device.x_mm, y: flipY(device.y_mm)})
     };
   }, [devices, crop]);
 }
@@ -144,6 +149,7 @@ export function PlanCanvas({
   onSelect,
   symbolOverrides,
   highlighted,
+  wiring,
   crop
 }: {
   devices: Device[];
@@ -152,11 +158,16 @@ export function PlanCanvas({
   symbolOverrides: Record<string, string>;
   /** Device milik circuit yang sedang disorot di daftar samping. */
   highlighted?: ReadonlySet<string>;
+  /**
+   * Pratinjau wiring. Tanpa prop ini kanvas menggambar persis seperti sebelumnya —
+   * seluruh perilaku seleksi, marquee, dan zoom tidak menyentuhnya sama sekali.
+   */
+  wiring?: WireRun[];
   /** Crop region view Revit; tanpa ini kanvas jatuh ke kotak pembatas device. */
   crop?: Crop;
 }) {
   const t = useTranslations('plan');
-  const {bounds, radius, place} = useLayout(devices, crop);
+  const {bounds, radius, flipY, place} = useLayout(devices, crop);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [marquee, setMarquee] = useState<{x1: number; y1: number; x2: number; y2: number} | null>(null);
   const additive = useRef(false);
@@ -392,6 +403,33 @@ export function PlanCanvas({
           height={current.height}
           fill="url(#plan-grid)"
         />
+
+        {/*
+          Pratinjau wiring, digambar sebelum simbol supaya garis lewat di bawah titik.
+          `pointerEvents: none` bukan hiasan: klik ditangani di tingkat SVG supaya
+          device yang bertumpuk bisa ditelusuri bergantian, dan elemen baru yang
+          menerima pointer akan menelan klik itu — simbol device pun memakainya.
+        */}
+        {wiring && wiring.length > 0 ? (
+          <g style={{pointerEvents: 'none'}}>
+            {wiring.map((run) => (
+              <polyline
+                key={`${run.roomKey}:${run.switchIndex}`}
+                points={run.vertices.map((vertex) => `${vertex.x},${flipY(vertex.y)}`).join(' ')}
+                fill="none"
+                stroke="var(--accent)"
+                strokeWidth={radius / 3}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                // Kaki saklar dibedakan garis, bukan warna kedua. Warna sudah dipakai
+                // status device, dan garis putus-putus tetap terbaca saat denah
+                // dicetak hitam putih.
+                strokeDasharray={run.switchIndex % 2 === 1 ? scaleDash('4 3', radius) : undefined}
+                opacity={0.85}
+              />
+            ))}
+          </g>
+        ) : null}
 
         {devices.map((device) => {
           const point = place(device);

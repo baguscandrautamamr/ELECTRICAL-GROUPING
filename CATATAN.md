@@ -585,6 +585,50 @@ yang menghitung device, bukan kemunculannya. Dua angka yang berbeda di satu kart
 terlihat seperti kesalahan; yang sebenarnya salah adalah memakai satu angka untuk
 dua pertanyaan yang berbeda.
 
+### Algoritma wiring hidup di TypeScript, bukan di Core
+
+Ini melanggar kebiasaan repo — logika biasanya turun ke `CircuitSync.Core` supaya
+bisa dites di runner Linux — dan pengecualiannya disengaja.
+
+Web menghitung seluruh geometri wiring, lalu nanti mengirim **daftar titik yang
+sudah jadi** ke add-in lewat `sync_jobs`. Add-in menggambar apa yang diperintahkan,
+tidak menghitung apa pun sendiri. Kalau algoritmanya ditulis dua kali — TypeScript
+untuk pratinjau, C# untuk menggambar — keduanya akan melenceng pelan-pelan, dan
+gejalanya paling buruk yang mungkin: pratinjau menunjukkan satu bentuk, Revit
+menggambar bentuk lain, tanpa ada yang salah di kedua sisi.
+
+Dengan cara ini yang terlihat di layar adalah angka yang sama persis yang digambar,
+lapisan Revit tetap setipis mungkin sesuai `addin/CLAUDE.md`, dan kode yang tidak
+bisa dites otomatis tidak bertambah. Konsekuensi yang diterima: wiring tidak bisa
+dijalankan dari add-in tanpa web.
+
+### Ruangan yang dikira-kira ditandai, bukan digabungkan
+
+`devices.room_name` sering kosong: add-in hanya bisa membacanya kalau family punya
+Room Calculation Point, dan downlight yang di-host ceiling biasanya tidak punya.
+
+Device yang bernama dikelompokkan menurut namanya; sisanya dikelompokkan dari
+kerapatan titik dan **ditandai sebagai kiraan** di layar. Sengaja tidak diserap ke
+ruangan bernama terdekat: menebak batas ruangan dari jarak antar lampu menghasilkan
+pembagian yang kelihatan masuk akal padahal salah, dan itu jenis kesalahan yang
+paling lama tidak ketahuan. Jalan keluar sebenarnya adalah tabel `rooms` beserta
+batas geometrinya — belum ada.
+
+### Dua hal yang masih jelek di pratinjau wiring
+
+Keduanya ditemukan justru karena pratinjaunya dibuat lebih dulu, dan keduanya
+**belum diperbaiki** — obatnya keputusan gambar, bukan keputusan kode.
+
+Ruangan berkolom banyak menghasilkan garis yang melewati lampu milik kaki saklar
+lain. Itu akibat langsung aturan papan catur, dan di ruangan dua kolom — pola yang
+paling sering dipakai — tidak pernah terjadi.
+
+Deretan lampu yang segaris, misalnya koridor, membuat kedua kaki saklar jatuh di
+garis yang sama persis dan saling menimpa. Yang membedakannya tinggal pola garis
+putus-putus. Obatnya menggeser salah satu kaki tegak lurus terhadap deretnya, tapi
+itu berarti garis tidak lagi lewat titik tengah lampu — perlu diputuskan dulu apakah
+itu yang diinginkan di gambar kerja.
+
 ---
 
 ## Alat

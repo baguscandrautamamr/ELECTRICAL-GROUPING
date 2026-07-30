@@ -120,6 +120,26 @@
     "nothingLeft": "Every device on this plan is in a circuit.",
     "noCircuits": "No circuits on this plan yet."
   },
+  "wiring": {
+    "heading": "Wiring by room",
+    "intro": "Lines come from where the points sit on this plan: each room is split across switches in an alternating pattern, so one switch lights the room evenly at half.",
+    "runCount": "{count, plural, =0 {No lines yet} other {# switch legs}}",
+    "lineStyle": "Line style",
+    "lineStyleEmpty": "No line styles yet",
+    "lineStyleHint": "The add-in reads this list from the model. Push the model from the add-in to fill it.",
+    "routing": "Line shape",
+    "routing_chamfer": "Orthogonal with cut corners",
+    "routing_direct": "Straight between points",
+    "switches": "Switches",
+    "switchCount": "{count, plural, other {# switches}}",
+    "rooms": "Rooms",
+    "roomUnnamed": "Room {number}",
+    "roomDevices": "{count, plural, other {# points}}",
+    "inferred": "Inferred from the spacing between points",
+    "inferredWarning": "{count, plural, other {# rooms were inferred from point spacing, because their names did not come through from Revit. Check how they were split on the plan before using them.}}",
+    "noRooms": "No points on this plan can be wired yet.",
+    "previewOnly": "Preview only. These lines are not saved and have not been sent to Revit."
+  },
   "circuits": {
     "heading": "Circuits",
     "draft": "Proposed",
