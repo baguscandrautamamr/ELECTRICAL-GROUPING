@@ -651,6 +651,19 @@ lampu, yang selang satu baris berjarak 2 kali, jadi diagonal selalu menang dan
 lompatan jauh hanya muncul kalau memang tidak ada pilihan lain. Lompatan itulah yang
 dirutekan memutar.
 
+### Urutan sambungan diukur di petak, bukan di milimeter
+
+Pola silang harus bertahan seberapa pun lebar jarak antar lampu. Diukur dalam
+milimeter, ruangan yang lebar mendatar merusaknya: tetangga diagonal berjarak hampir
+selebar satu kolom, sedangkan lampu sewarna di kolom yang sama dua baris di bawahnya
+jauh lebih dekat. Urutannya melompat tegak lebih dulu, dan silangnya berubah jadi
+sapuan panjang melintasi ruangan — benar menurut aturan, jelek dipandang.
+
+Di ruang petak `(baris, kolom)` diagonal selalu berjarak akar 2 dan lompatan dua baris
+selalu 2, apa pun bentuk ruangannya. Urutan sambungan jadi sama persis untuk ruangan
+yang lebar, normal, maupun tinggi — sudah diperiksa dengan menjalankan ketiganya dan
+membandingkan urutan yang keluar.
+
 ### Detour harus lebih lebar daripada radius bersihnya
 
 `DETOUR_RATIO` wajib lebih besar daripada `CLEARANCE_RATIO`. Versi pertama memakai 0,32

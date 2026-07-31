@@ -349,27 +349,33 @@ function gridOf(bands: readonly Device[][], columns: Map<string, number>): Grid 
  * adalah urusan listrik, dan tidak boleh berubah hanya karena bentuk garisnya
  * diganti.
  */
-function legsOf(grid: Grid, switches: number): Device[][] {
-  const legs: Device[][] = Array.from({length: switches}, () => []);
+function legsOf(grid: Grid, switches: number): Cell[][] {
+  const legs: Cell[][] = Array.from({length: switches}, () => []);
 
   for (let row = 0; row < grid.rows; row++) {
     for (let column = 0; column < grid.columns; column++) {
       const device = grid.at(row, column);
-      if (device) legs[(row + column) % switches]!.push(device);
+      if (device) legs[(row + column) % switches]!.push({device, row, column});
     }
   }
 
   return legs;
 }
 
+/** Satu lampu beserta letaknya di petak ruangan. */
+type Cell = {device: Device; row: number; column: number};
+
 /**
- * Urutan sambungan satu kaki: tetangga terdekat, mulai dari kiri atas.
+ * Urutan sambungan satu kaki: tetangga terdekat **di ruang petak**, bukan di
+ * milimeter.
  *
- * Tetangga terdekat otomatis mendahulukan diagonal. Di papan catur, dua lampu
- * sewarna yang bertetangga diagonal berjarak sekitar 1,4 kali jarak antar lampu,
- * sedangkan yang selang satu baris atau satu kolom berjarak 2 kali — jadi diagonal
- * selalu menang, dan diagonal adalah satu-satunya sambungan yang tidak pernah
- * melewati lampu milik kaki lain.
+ * Ini yang membuat pola silang bertahan seberapa pun lebar jarak antar lampu.
+ * Diukur dalam milimeter, ruangan yang lebar mendatar membuat tetangga diagonal
+ * berjarak hampir selebar satu kolom, sedangkan lampu sewarna di kolom yang sama
+ * dua baris di bawahnya jauh lebih dekat — jadi urutannya melompat tegak dulu, dan
+ * silangnya berubah jadi sapuan panjang melintasi ruangan. Di ruang petak,
+ * diagonal selalu berjarak akar 2 dan lompatan dua baris selalu 2, apa pun bentuk
+ * ruangannya.
  *
  * Lompatan yang lebih jauh tetap muncul, dan memang tidak bisa dihindari: di
  * ruangan tiga kolom, lampu sewarna di pojok kiri atas dan pojok kanan atas
@@ -378,21 +384,21 @@ function legsOf(grid: Grid, switches: number): Device[][] {
  * jadi sisanya pasti butuh sambungan bukan-diagonal. Sambungan itulah yang nanti
  * dirutekan memutar.
  */
-function orderLeg(devices: readonly Device[]): Device[] {
-  if (devices.length < 2) return [...devices];
+function orderLeg(cells: readonly Cell[]): Cell[] {
+  if (cells.length < 2) return [...cells];
 
-  const remaining = [...devices];
+  const remaining = [...cells];
 
   // Kiri atas sebagai pangkal supaya urutannya stabil antar muat ulang.
   let bestStart = 0;
-  remaining.forEach((device, index) => {
+  remaining.forEach((cell, index) => {
     const best = remaining[bestStart]!;
-    if (device.y_mm > best.y_mm || (device.y_mm === best.y_mm && device.x_mm < best.x_mm)) {
+    if (cell.row < best.row || (cell.row === best.row && cell.column < best.column)) {
       bestStart = index;
     }
   });
 
-  const ordered: Device[] = [remaining.splice(bestStart, 1)[0]!];
+  const ordered: Cell[] = [remaining.splice(bestStart, 1)[0]!];
 
   while (remaining.length > 0) {
     const from = ordered[ordered.length - 1]!;
@@ -401,15 +407,16 @@ function orderLeg(devices: readonly Device[]): Device[] {
     let bestDistance = Infinity;
 
     remaining.forEach((candidate, index) => {
-      const gap = distance(from, candidate);
+      const gap = Math.hypot(candidate.row - from.row, candidate.column - from.column);
 
       // Seri diputus baris teratas lalu kolom terkiri — bukan urutan kedatangan,
       // yang bergantung pada urutan baris dari database.
+      const chosen = remaining[pick]!;
       const better =
         gap < bestDistance - EPSILON ||
         (Math.abs(gap - bestDistance) < EPSILON &&
-          (candidate.y_mm > remaining[pick]!.y_mm ||
-            (candidate.y_mm === remaining[pick]!.y_mm && candidate.x_mm < remaining[pick]!.x_mm)));
+          (candidate.row < chosen.row ||
+            (candidate.row === chosen.row && candidate.column < chosen.column)));
 
       if (better) {
         bestDistance = gap;
@@ -423,11 +430,6 @@ function orderLeg(devices: readonly Device[]): Device[] {
   return ordered;
 }
 
-function distance(a: Device, b: Device): number {
-  const dx = a.x_mm - b.x_mm;
-  const dy = a.y_mm - b.y_mm;
-  return Math.sqrt(dx * dx + dy * dy);
-}
 
 function push(into: Point[], point: Point) {
   const last = into[into.length - 1];
@@ -728,7 +730,7 @@ export function planWiring(devices: readonly Device[], options: WiringOptions): 
       // daripada muncul sebagai garis tanpa panjang.
       if (members.length < 2) return;
 
-      const leg = orderLeg(members);
+      const leg = orderLeg(members).map((cell) => cell.device);
       const own = new Set(leg.map((device) => device.revit_unique_id));
 
       runs.push({
