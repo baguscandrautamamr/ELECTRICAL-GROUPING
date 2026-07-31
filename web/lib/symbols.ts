@@ -80,3 +80,35 @@ export const STATUS_STYLE: Record<DeviceStatus, StatusStyle> = {
   // coretan, bukan sebagai simbol.
   no_connector: {color: 'var(--ink-muted)', fill: 'muted', struck: true}
 };
+
+/**
+ * Warna dan pola garis tiap kaki saklar di pratinjau wiring.
+ *
+ * Sebelumnya semua kaki memakai satu warna dan dibedakan hanya oleh garis
+ * putus-putus. Dua kaki yang berjalan berdampingan di ruangan yang sama lebih cepat
+ * dipisahkan mata oleh warna daripada oleh pola — dan warna per saklar itulah yang
+ * dipakai gambar acuan.
+ *
+ * Polanya tetap dibedakan, bukan diganti: warna sendirian hilang saat denah dicetak
+ * hitam putih atau dilihat pengguna dengan buta warna, aturan yang sama dengan
+ * `STATUS_STYLE` di atas.
+ *
+ * Serinya memakai token sendiri, bukan `--ok`/`--warn`/`--danger`. Kalau memakai
+ * token status, garis saklar akan terbaca sebagai pernyataan tentang status device
+ * — padahal keduanya hal yang berbeda dan tampil di denah yang sama.
+ */
+export type SwitchStyle = {color: string; dash?: string};
+
+export const SWITCH_STYLES: readonly SwitchStyle[] = [
+  {color: 'var(--series-1)'},
+  {color: 'var(--series-2)', dash: '4 3'},
+  {color: 'var(--series-3)', dash: '1.5 2'},
+  {color: 'var(--series-4)', dash: '7 3 1.5 3'},
+  {color: 'var(--series-5)', dash: '3 2'},
+  {color: 'var(--series-6)', dash: '9 4'}
+];
+
+export function switchStyleFor(index: number): SwitchStyle {
+  const count = SWITCH_STYLES.length;
+  return SWITCH_STYLES[((index % count) + count) % count]!;
+}
