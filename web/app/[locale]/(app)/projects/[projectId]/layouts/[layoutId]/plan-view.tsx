@@ -50,7 +50,8 @@ export function PlanView({
   lightingDevices,
   lineStyles,
   lineStylesUnavailable,
-  switchDataMissing
+  switchDataMissing,
+  wiringInModel
 }: {
   projectId: string;
   kind: DeviceKind;
@@ -67,6 +68,8 @@ export function PlanView({
   lineStylesUnavailable: boolean;
   /** Benar kalau project ini belum punya data saklar sama sekali. */
   switchDataMissing: boolean;
+  /** Berapa ruas garis yang sedang ada di Revit untuk denah ini. */
+  wiringInModel: number;
 }) {
   const t = useTranslations('plan');
   const c = useTranslations('circuits');
@@ -557,6 +560,7 @@ export function PlanView({
             setWiringFeedback(null);
           }}
           switchDataMissing={switchDataMissing}
+          wiringInModel={wiringInModel}
           send={{
             runs: sendable.inside.length,
             partial: sendable.partial,

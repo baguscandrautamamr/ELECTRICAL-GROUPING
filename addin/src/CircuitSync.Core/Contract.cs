@@ -264,6 +264,23 @@ public sealed record WiringRequest
     public IReadOnlyList<WireRunRow> Runs { get; init; } = [];
 }
 
+/// <summary>
+/// Satu garis wiring yang sedang ada di model, dicatat setelah digambar.
+/// </summary>
+/// <remarks>
+/// Ini yang membuat pengiriman garis jadi pengganti, bukan tambahan. Tanpa catatan ini
+/// add-in tidak punya cara aman menjawab "garis mana di denah ini yang milik kita":
+/// menghapus semua detail curve di view akan membuang garis yang digambar user sendiri,
+/// dan menghapus berdasarkan line style pun sama, karena style itu dipakai user juga.
+/// </remarks>
+public sealed record WiringCurveRow
+{
+    [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
+    [JsonPropertyName("layout_unique_id")] public string LayoutUniqueId { get; init; } = "";
+    [JsonPropertyName("revit_unique_id")] public string RevitUniqueId { get; init; } = "";
+    [JsonPropertyName("switch_index")] public int SwitchIndex { get; init; }
+}
+
 public sealed record SyncJobRow
 {
     [JsonPropertyName("id")] public Guid Id { get; init; }

@@ -39,6 +39,7 @@ export function WiringPanel({
   lineStyleId,
   onLineStyleChange,
   switchDataMissing,
+  wiringInModel,
   send
 }: {
   open: boolean;
@@ -55,6 +56,8 @@ export function WiringPanel({
   onLineStyleChange: (id: string) => void;
   /** Benar kalau project ini belum punya data saklar sama sekali. */
   switchDataMissing: boolean;
+  /** Ruas garis yang sedang ada di Revit untuk denah ini. */
+  wiringInModel: number;
   send: WiringSend;
 }) {
   const t = useTranslations('wiring');
@@ -177,6 +180,18 @@ export function WiringPanel({
             {send.partial > 0 ? (
               <p className="text-[12px] leading-relaxed text-muted">
                 {t('sendPartial', {count: send.partial})}
+              </p>
+            ) : null}
+
+            {/*
+              Garis yang sedang hidup di Revit disebutkan, karena itu yang menjawab
+              pertanyaan yang muncul begitu wiring dikirim dua kali: apakah yang lama
+              tertimpa atau ditumpuk. Jawabannya tertimpa — dan lebih baik tertulis di
+              sebelah tombolnya daripada dipelajari dari model yang garisnya dobel.
+            */}
+            {wiringInModel > 0 ? (
+              <p className="text-[12px] leading-relaxed text-muted">
+                {t('inModel', {count: wiringInModel})}
               </p>
             ) : null}
 

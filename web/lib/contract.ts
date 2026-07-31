@@ -177,6 +177,22 @@ export type SyncJob = {
 };
 
 /**
+ * Satu garis wiring yang sedang ada di model Revit, dicatat add-in setelah menggambar.
+ *
+ * Ini yang membuat pengiriman garis jadi pengganti, bukan tambahan: add-in membaca daftar
+ * ini, menghapus garisnya dari model, lalu menggambar kiriman baru. Tanpa catatan ini
+ * kiriman kedua menumpuk di atas yang pertama — lihat
+ * `supabase/migrations/20260731030000_wiring_curves.sql`.
+ */
+export type WiringCurve = {
+  project_id: string;
+  layout_unique_id: string;
+  /** `UniqueId` detail curve di Revit, bukan id garis di web. */
+  revit_unique_id: string;
+  switch_index: number;
+};
+
+/**
  * Satu kaki saklar di dalam payload job `wiring`. Cermin dari `WireRunRow` di C#.
  *
  * Titiknya milimeter di koordinat model, sama seperti `device.x_mm`. Add-in memakainya apa

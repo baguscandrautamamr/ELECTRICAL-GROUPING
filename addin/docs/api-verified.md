@@ -165,6 +165,12 @@ lihat catatan uji manual di [`CATATAN.md`](../../CATATAN.md).
 | `Document.Application` → `ApplicationServices.Application` | |
 | `Application.ShortCurveTolerance` | `double`. Ruas yang lebih pendek daripada ini ditolak Revit dengan exception, jadi dibuang lebih dulu. Dibaca dari Revit, tidak ditulis sebagai angka. |
 | `ViewPlan.GenLevel` → `Level.ProjectElevation` | `double`. Elevasi bidang tempat detail curve ditaruh. Denah yang levelnya bukan di elevasi nol akan menolak kurva di Z=0. |
+| `Document.Delete(ICollection<ElementId>)` | Overload jamak, bukan yang satuan. Mengembalikan `ICollection<ElementId>` — di sini jumlahnya dipakai, sebagai berapa garis lama yang benar-benar terhapus. |
+
+Pengiriman garis bersifat **mengganti**: garis kiriman sebelumnya dihapus lebih dulu. Yang
+dihapus hanya yang tercatat di tabel `wiring_curves`, di-resolve lewat
+`Document.GetElement(string)`. Menghapus semua detail curve di view, atau semua yang
+memakai line style tertentu, akan ikut membuang garis yang digambar user sendiri.
 
 ## Satuan
 

@@ -24,6 +24,9 @@ public sealed class CircuitSyncApi(SupabaseClient client)
     /// Sepasang dengan <see cref="SupabaseClient.MissingColumns"/>. Dikumpulkan supaya UI
     /// bisa menyebutkannya: melewati sebuah tabel diam-diam membuat fitur yang
     /// bergantung padanya mati tanpa satu pun petunjuk kenapa.
+    ///
+    /// Isinya menggambarkan <b>tarikan terakhir</b>, bukan seluruh riwayat sesi — lihat
+    /// pengosongannya di <see cref="PushSnapshotAsync"/>.
     /// </remarks>
     public IReadOnlyCollection<string> MissingTables => _missingTables;
 
@@ -63,6 +66,16 @@ public sealed class CircuitSyncApi(SupabaseClient client)
     public async Task PushSnapshotAsync(Guid projectId, ModelSnapshot snapshot, CancellationToken ct = default)
     {
         var stamp = DateTimeOffset.UtcNow.AddSeconds(-1);
+
+        // Catatan kolom dan tabel yang hilang dikosongkan dulu: peringatan di log harus
+        // menggambarkan tarikan **ini**, bukan seluruh riwayat sesi Revit.
+        //
+        // Tanpa ini, sekali sebuah tabel tercatat hilang peringatannya terus muncul di
+        // setiap tarikan berikutnya — termasuk setelah migrasinya diterapkan dan upsert-nya
+        // sudah berhasil. Yang sampai ke user: "tabelnya belum ada" di sebelah "model
+        // terkirim", dua baris yang saling membantah, dan yang benar justru yang kedua.
+        _missingTables.Clear();
+        Client.ForgetMissingColumns();
 
         // `levels`, `panels`, dan `devices` datang dari migrasi pertama: kalau ketiganya
         // tidak ada, database ini memang belum disiapkan, dan user berhak berhenti dengan
@@ -187,6 +200,73 @@ public sealed class CircuitSyncApi(SupabaseClient client)
         }
 
         return result;
+    }
+
+    // ---------------------------------------------------------------- wiring
+
+    /// <summary>
+    /// <c>UniqueId</c> garis wiring yang tercatat sedang ada di model untuk sebuah denah.
+    /// </summary>
+    /// <remarks>
+    /// Kosong kalau tabelnya belum ada — dan itu ditangani sebagai "belum ada garis yang
+    /// perlu dihapus", bukan sebagai kegagalan. Pengiriman pertama setelah migrasinya
+    /// diterapkan memang tidak punya catatan apa pun.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> FetchWiringCurvesAsync(Guid projectId, string layoutUniqueId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var rows = await Client.SelectAsync<WiringCurveRow>("wiring_curves",
+                    "select=project_id,layout_unique_id,revit_unique_id,switch_index" +
+                    $"&project_id=eq.{projectId}&layout_unique_id=eq.{Uri.EscapeDataString(layoutUniqueId)}", ct)
+                .ConfigureAwait(false);
+
+            return rows.Select(row => row.RevitUniqueId).ToList();
+        }
+        catch (CloudException ex) when (PostgrestSchema.MissingTable(ex.Body) is { } missing)
+        {
+            _missingTables.Add(missing);
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Mengganti catatan garis sebuah denah dengan yang baru saja digambar.
+    /// </summary>
+    /// <remarks>
+    /// Hapus dulu lalu isi, bukan upsert: garis yang tadinya ada dan sekarang tidak lagi
+    /// harus hilang dari catatan juga. Upsert hanya menambah, dan catatan yang menyebut
+    /// garis yang sudah dihapus membuat pengiriman berikutnya mencari elemen hantu.
+    ///
+    /// Urutannya hapus-lalu-isi, dan itu memang ada celahnya: kalau pengisian gagal di
+    /// tengah, catatannya jadi kurang dan garis yang tertinggal di model tidak akan
+    /// terhapus pada pengiriman berikutnya. Yang dipilih di sini adalah kegagalan yang
+    /// terlihat — garis dobel yang bisa dihapus user — di atas catatan yang menyebut
+    /// elemen yang sudah tidak ada.
+    /// </remarks>
+    public async Task ReplaceWiringCurvesAsync(Guid projectId, string layoutUniqueId,
+        IReadOnlyList<WiringCurveRow> curves, CancellationToken ct = default)
+    {
+        if (_missingTables.Contains("wiring_curves"))
+        {
+            return;
+        }
+
+        try
+        {
+            await Client.DeleteAsync("wiring_curves",
+                    $"project_id=eq.{projectId}&layout_unique_id=eq.{Uri.EscapeDataString(layoutUniqueId)}", ct)
+                .ConfigureAwait(false);
+
+            await UpsertBatchedAsync("wiring_curves",
+                curves.Select(c => c with { ProjectId = projectId }).ToList(),
+                "project_id,revit_unique_id", ct).ConfigureAwait(false);
+        }
+        catch (CloudException ex) when (PostgrestSchema.MissingTable(ex.Body) is { } missing)
+        {
+            _missingTables.Add(missing);
+        }
     }
 
     public Task MarkJobAppliedAsync(Guid jobId, CancellationToken ct = default) =>

@@ -106,6 +106,21 @@ public class ContractTests
     }
 
     [Fact]
+    public void Wiring_curve_serialises_to_the_agreed_columns()
+    {
+        var fields = Fields(new WiringCurveRow
+        {
+            ProjectId = Guid.NewGuid(),
+            LayoutUniqueId = "view-1",
+            RevitUniqueId = "curve-1",
+            SwitchIndex = 1,
+        });
+
+        AssertSameSet(
+            ["project_id", "layout_unique_id", "revit_unique_id", "switch_index"], fields);
+    }
+
+    [Fact]
     public void Line_style_serialises_to_the_agreed_columns()
     {
         var fields = Fields(new LineStyleRow

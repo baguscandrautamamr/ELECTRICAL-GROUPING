@@ -152,9 +152,10 @@
     "sendNeedsWholeRun": "No switch leg is fully selected yet. Widen the selection until a whole leg is inside, so the lines in Revit match what you see here.",
     "sendNeedsLineStyle": "Pick a line style first; the add-in uses it as the line style in the model.",
     "sendPartial": "{count, plural, other {# legs skipped because only part of their points are selected.}}",
-    "sent": "{count, plural, other {# legs queued. Fetch the plan from the add-in to draw them.}}",
+    "sent": "{count, plural, other {# legs queued. Fetch the plan from the add-in to draw them; the existing lines on this plan will be replaced.}}",
     "lineStyleNeedsMigration": "The line style table does not exist in the database yet. Run the latest migration (supabase db push), then push the model again from the add-in.",
-    "sendNeedsMigration": "The database has no function for queueing lines yet. Run the latest migration (supabase db push), then try again."
+    "sendNeedsMigration": "The database has no function for queueing lines yet. Run the latest migration (supabase db push), then try again.",
+    "inModel": "{count, plural, other {# line segments are currently in Revit for this plan. Sending again replaces them rather than stacking on top.}}"
   },
   "circuits": {
     "heading": "Circuits",

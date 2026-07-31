@@ -292,6 +292,44 @@ begin
 end;
 $$;
 
+-- Garis wiring yang tercatat ada di model. Ini yang membuat kiriman kedua mengganti
+-- alih-alih menumpuk.
+insert into public.wiring_curves (project_id, layout_unique_id, revit_unique_id, switch_index)
+values (:pid, 'view-lighting', 'curve-1', 0),
+       (:pid, 'view-lighting', 'curve-2', 0),
+       (:pid, 'view-lighting', 'curve-3', 1);
+
+do $$
+begin
+  assert (select count(*) from public.wiring_curves
+           where layout_unique_id = 'view-lighting') = 3,
+         'catatan garis wiring tidak terbaca';
+
+  -- Cascade dari layouts: denah yang tersapu snapshot ikut membawa catatan garisnya.
+  -- Tanpa ini catatan menunjuk view yang sudah tidak ada, dan pengiriman berikutnya
+  -- mencari elemen hantu.
+  delete from public.layouts
+   where project_id = 'cccccccc-0000-4000-8000-000000000003'
+     and revit_unique_id = 'view-emergency';
+
+  assert (select count(*) from public.layouts) = 1, 'denah tidak terhapus';
+
+  delete from public.layouts
+   where project_id = 'cccccccc-0000-4000-8000-000000000003'
+     and revit_unique_id = 'view-lighting';
+
+  assert (select count(*) from public.wiring_curves) = 0,
+         'catatan garis yatim tertinggal setelah denahnya dihapus';
+end;
+$$;
+
+-- Denahnya dipasang kembali supaya pemeriksaan setelah ini punya layout untuk dipakai.
+insert into public.layouts (project_id, revit_unique_id, name, kind, level_key, scale, sort_order)
+values (:pid, 'view-lighting', 'L1 - LIGHTING PLAN', 'lighting', 'L1', 100, 0);
+
+insert into public.wiring_curves (project_id, layout_unique_id, revit_unique_id, switch_index)
+values (:pid, 'view-lighting', 'curve-1', 0);
+
 -- ---------------------------------------------------------------- user B
 set request.jwt.claim.sub = 'bbbbbbbb-0000-4000-8000-000000000002';
 
@@ -335,6 +373,8 @@ begin
   assert (select count(*) from public.layout_lighting_devices) = 0,
          'B melihat keanggotaan saklar project orang lain';
   assert (select count(*) from public.line_styles) = 0, 'B melihat line style project orang lain';
+  assert (select count(*) from public.wiring_curves) = 0,
+         'B melihat catatan garis wiring project orang lain';
 end;
 $$;
 

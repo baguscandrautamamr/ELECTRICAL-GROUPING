@@ -152,9 +152,10 @@
     "sendNeedsWholeRun": "Belum ada kaki saklar yang terpilih utuh. Perluas pilihannya sampai satu kaki penuh masuk, supaya garis di Revit sama dengan yang terlihat di sini.",
     "sendNeedsLineStyle": "Pilih line style dulu; add-in memakainya sebagai gaya garis di model.",
     "sendPartial": "{count, plural, other {# kaki dilewati karena cuma sebagian titiknya terpilih.}}",
-    "sent": "{count, plural, other {# kaki terkirim ke antrean. Ambil rencana dari add-in untuk menggambarnya.}}",
+    "sent": "{count, plural, other {# kaki terkirim ke antrean. Ambil rencana dari add-in untuk menggambarnya; garis lama di denah ini akan diganti.}}",
     "lineStyleNeedsMigration": "Tabel line style belum ada di database. Jalankan migrasi terbaru (supabase db push), lalu tarik ulang model dari add-in.",
-    "sendNeedsMigration": "Database belum punya fungsi untuk mengantre gambar garis. Jalankan migrasi terbaru (supabase db push), lalu coba lagi."
+    "sendNeedsMigration": "Database belum punya fungsi untuk mengantre gambar garis. Jalankan migrasi terbaru (supabase db push), lalu coba lagi.",
+    "inModel": "{count, plural, other {# ruas garis sedang ada di Revit untuk denah ini. Mengirim lagi menggantinya, bukan menumpuknya.}}"
   },
   "circuits": {
     "heading": "Circuit",

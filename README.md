@@ -39,7 +39,8 @@ Catatan keputusan teknis dan langkah yang masih manual ada di
 - **Login email** — tautan masuk atau kata sandi di web, kode enam angka di add-in
 - **Per project** — satu project satu model Revit, dipisah RLS di database
 - **Garis wiring ke Revit** — pilih titik di denah, pilih line style dari model, kirim;
-  add-in menggambarnya sebagai detail curve di view yang sama
+  add-in menggambarnya sebagai detail curve di view yang sama, dan kiriman berikutnya
+  **mengganti** garis lama alih-alih menumpuknya
 - **Auto build** — GitHub Actions membangun ZIP add-in di setiap push
 
 ## Mulai
@@ -96,8 +97,9 @@ sync_job: id, project_id, direction, status, payload, error, applied_at
 ```
 
 Tabel turunannya tunduk aturan yang sama: `layout`, `layout_device`,
-`lighting_device`, `layout_lighting_device`, dan `line_style` — masing-masing dengan
-migrasinya sendiri, dan tercermin di kedua sisi pada commit yang sama.
+`lighting_device`, `layout_lighting_device`, `line_style`, dan `wiring_curve` —
+masing-masing dengan migrasinya sendiri, dan tercermin di kedua sisi pada commit
+yang sama.
 
 Ada test di sisi C# yang membandingkan nama kolom hasil serialisasi dengan daftar
 di atas, jadi ketidakcocokan gagal saat `dotnet test`, bukan saat sinkronisasi

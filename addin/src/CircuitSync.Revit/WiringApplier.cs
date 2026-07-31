@@ -13,6 +13,14 @@ public sealed record WiringApplyResult
     /// <summary>Detail curve yang benar-benar masuk model. Satu ruas = satu curve.</summary>
     public int LinesDrawn { get; init; }
 
+    /// <summary>Garis kiriman sebelumnya yang dihapus dari model.</summary>
+    public int LinesErased { get; init; }
+
+    /// <summary>
+    /// Garis yang baru digambar, untuk dicatat ke database sebagai isi denah saat ini.
+    /// </summary>
+    public IReadOnlyList<WiringCurveRow> Drawn { get; init; } = [];
+
     /// <summary>Kunci pesan untuk UI, bukan teks siap tampil.</summary>
     public string? ErrorKey { get; init; }
 
@@ -30,6 +38,11 @@ public sealed record WiringApplyResult
 /// <b>Detail curve, bukan model curve.</b> Garis wiring adalah anotasi denah: ia hidup
 /// di satu view, ikut skalanya, dan tidak boleh muncul di view lain atau di 3D. Model
 /// curve akan tampil di mana-mana dan menabrak geometri sungguhan.
+///
+/// <b>Mengganti, bukan menambah.</b> Garis kiriman sebelumnya dihapus lebih dulu, dan
+/// yang dihapus hanya yang tercatat di <c>wiring_curves</c> — bukan semua detail curve
+/// di view, dan bukan berdasarkan line style. Keduanya akan ikut membuang garis yang
+/// digambar user sendiri.
 /// </remarks>
 public static class WiringApplier
 {
@@ -38,7 +51,13 @@ public static class WiringApplier
     public const string ErrorLineStyleMissing = "wiring.line_style_missing";
     public const string ErrorNothingDrawn = "wiring.nothing_drawn";
 
-    public static WiringApplyResult Apply(Document doc, WiringRequest request)
+    /// <param name="existing">
+    /// <c>UniqueId</c> garis kiriman sebelumnya untuk denah ini, dibaca dari
+    /// <c>wiring_curves</c>. Yang sudah tidak ada di model dilewati tanpa keluhan — user
+    /// boleh saja sudah menghapusnya sendiri.
+    /// </param>
+    public static WiringApplyResult Apply(Document doc, WiringRequest request,
+        IReadOnlyList<string> existing)
     {
         if (doc.GetElement(request.LayoutUniqueId) is not { } layoutElement)
         {
@@ -66,15 +85,21 @@ public static class WiringApplier
 
         var elevation = view.GenLevel?.ProjectElevation ?? 0;
         var runsDrawn = 0;
-        var linesDrawn = 0;
+        var linesErased = 0;
+        var drawnRows = new List<WiringCurveRow>();
         var problems = new List<string>();
 
+        // Satu TransactionGroup untuk hapus **dan** gambar, lalu Assimilate: satu Ctrl+Z
+        // mengembalikan denah ke keadaan sebelum pengiriman. Kalau keduanya dipisah, sekali
+        // undo hanya membuang garis baru dan meninggalkan denah tanpa garis sama sekali.
         using var group = new TransactionGroup(doc, "CircuitSync — gambar garis wiring");
         group.Start();
 
         using (var transaction = new Transaction(doc, "CircuitSync — garis wiring"))
         {
             transaction.Start();
+
+            linesErased = Erase(doc, existing);
 
             foreach (var run in request.Runs)
             {
@@ -86,7 +111,7 @@ public static class WiringApplier
                 try
                 {
                     var drawn = DrawRun(doc, view, style, run, elevation, shortest);
-                    if (drawn == 0)
+                    if (drawn.Count == 0)
                     {
                         sub.RollBack();
                         continue;
@@ -94,7 +119,19 @@ public static class WiringApplier
 
                     sub.Commit();
                     runsDrawn++;
-                    linesDrawn += drawn;
+
+                    // Dicatat setelah commit: id elemen yang transaksinya digulung tidak
+                    // menunjuk apa pun, dan menuliskannya ke database akan membuat
+                    // pengiriman berikutnya mencari garis yang tidak pernah ada.
+                    foreach (var uniqueId in drawn)
+                    {
+                        drawnRows.Add(new WiringCurveRow
+                        {
+                            LayoutUniqueId = request.LayoutUniqueId,
+                            RevitUniqueId = uniqueId,
+                            SwitchIndex = run.SwitchIndex,
+                        });
+                    }
                 }
                 catch (Autodesk.Revit.Exceptions.ApplicationException ex)
                 {
@@ -112,17 +149,52 @@ public static class WiringApplier
 
         group.Assimilate();
 
+        var linesDrawn = drawnRows.Count;
+
         var detail = problems.Count == 0 ? null : string.Join(" · ", problems);
 
         return linesDrawn == 0
-            ? Failed(ErrorNothingDrawn, detail)
+            ? Failed(ErrorNothingDrawn, detail) with { LinesErased = linesErased }
             : new WiringApplyResult
             {
                 Ok = true,
                 RunsDrawn = runsDrawn,
                 LinesDrawn = linesDrawn,
+                LinesErased = linesErased,
+                Drawn = drawnRows,
                 ErrorDetail = detail,
             };
+    }
+
+    /// <summary>
+    /// Membuang garis kiriman sebelumnya. Mengembalikan berapa yang benar-benar terhapus.
+    /// </summary>
+    /// <remarks>
+    /// Yang sudah tidak ada di model dilewati tanpa keluhan: user boleh menghapus garis
+    /// sendiri, dan itu bukan kegagalan — hasil akhirnya tetap sama, yaitu denah yang
+    /// hanya memuat garis kiriman terbaru.
+    ///
+    /// Dihapus sekaligus dalam satu panggilan, bukan satu per satu, supaya Revit hanya
+    /// sekali menghitung ulang ketergantungan elemen.
+    /// </remarks>
+    private static int Erase(Document doc, IReadOnlyList<string> existing)
+    {
+        var ids = new List<ElementId>();
+
+        foreach (var uniqueId in existing)
+        {
+            if (doc.GetElement(uniqueId) is { } element)
+            {
+                ids.Add(element.Id);
+            }
+        }
+
+        if (ids.Count == 0)
+        {
+            return 0;
+        }
+
+        return doc.Delete(ids).Count;
     }
 
     /// <summary>
@@ -134,10 +206,10 @@ public static class WiringApplier
     /// Memecahnya di sini, bukan menyambungnya jadi satu, disengaja: user bisa menghapus
     /// atau memindahkan satu ruas tanpa kehilangan seluruh kaki.
     /// </remarks>
-    private static int DrawRun(Document doc, ViewPlan view, GraphicsStyle style, WireRunRow run,
+    private static List<string> DrawRun(Document doc, ViewPlan view, GraphicsStyle style, WireRunRow run,
         double elevation, double shortest)
     {
-        var drawn = 0;
+        var drawn = new List<string>();
 
         for (var index = 1; index < run.Vertices.Count; index++)
         {
@@ -151,7 +223,7 @@ public static class WiringApplier
 
             var curve = doc.Create.NewDetailCurve(view, Line.CreateBound(from, to));
             curve.LineStyle = style;
-            drawn++;
+            drawn.Add(curve.UniqueId);
         }
 
         return drawn;
