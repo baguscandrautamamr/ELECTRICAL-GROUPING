@@ -69,7 +69,13 @@ public static class PostgrestSchema
             return null;
         }
 
-        var match = Regex.Match(body, @"Could not find the table '(?:public\.)?([^']+)'", RegexOptions.None,
+        // Pesannya dibaca dari JSON-nya, bukan dari teks mentah body. PostgREST menulis
+        // nama tabel di antara petik tunggal, tapi Postgres memakai petik ganda — dan di
+        // dalam body JSON petik ganda itu ter-escape jadi \", sehingga regex terhadap teks
+        // mentah meleset persis pada bentuk yang datang dari fungsi database.
+        var message = Message(body) ?? body;
+
+        var match = Regex.Match(message, @"Could not find the table '(?:public\.)?([^']+)'", RegexOptions.None,
             TimeSpan.FromSeconds(1));
         if (match.Success)
         {
@@ -77,9 +83,32 @@ public static class PostgrestSchema
         }
 
         // 42P01 dari Postgres berbunyi lain: relation "public.line_styles" does not exist.
-        match = Regex.Match(body, @"relation ""(?:public\.)?([^""]+)"" does not exist", RegexOptions.None,
+        match = Regex.Match(message, @"relation ""(?:public\.)?([^""]+)"" does not exist", RegexOptions.None,
             TimeSpan.FromSeconds(1));
         return match.Success ? match.Groups[1].Value : null;
+    }
+
+    /// <summary>
+    /// Isi field <c>message</c> dari body error, atau null kalau body-nya bukan JSON objek
+    /// berisi pesan.
+    /// </summary>
+    private static string? Message(string body)
+    {
+        try
+        {
+            if (JsonNode.Parse(body) is JsonObject root &&
+                root["message"] is JsonValue value &&
+                value.TryGetValue<string>(out var text))
+            {
+                return text;
+            }
+        }
+        catch (JsonException)
+        {
+            // Body yang bukan JSON tetap dicoba apa adanya oleh pemanggilnya.
+        }
+
+        return null;
     }
 
     /// <summary>
