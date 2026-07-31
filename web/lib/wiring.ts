@@ -179,9 +179,12 @@ function roomsOf(devices: readonly Device[], spacing: number): {key: string; nam
  * Menaikkan ambangnya cuma memindahkan salah tebak ke ukuran ruangan yang lain.
  *
  * Jumlah saklar menjawabnya tanpa menebak: dua lighting device berarti dua grouping,
- * serapat apa pun lampunya. Pemotongannya dilakukan dengan mengecilkan jangkauan
- * pengelompokan sampai kumpulannya benar-benar pecah jadi sebanyak itu — dengan
- * sendirinya potongan jatuh di celah terlebar, yaitu di dindingnya.
+ * serapat apa pun lampunya. Saklar menentukan **ada berapa** grouping; yang menentukan
+ * **besarnya** adalah pembagian baris yang sama banyak — enam baris dengan tiga saklar
+ * jadi tiga grouping berisi dua baris, bukan tiga grouping yang besarnya ikut lebar bay.
+ *
+ * Tiap grouping tetap dibagi dua kaki selang-seling di `orderLeg`. Saklar membagi
+ * ruangan; papan catur membagi tiap bagian.
  */
 function splitBySwitches(devices: readonly Device[], parts: number, spacing: number): Device[][] {
   if (parts < 2 || devices.length < parts) return [[...devices]];
@@ -200,18 +203,37 @@ function splitBySwitches(devices: readonly Device[], parts: number, spacing: num
     gaps.push({at: index, width: columns[index]![0]!.x_mm - columns[index - 1]!.at(-1)!.x_mm});
   }
 
-  // Celah terlebar menang. Seri diputus oleh keseimbangan — di ruangan seragam semua
-  // celahnya sama, dan tanpa ini potongannya jatuh di tepi alih-alih di tengah.
-  const ideal = (step: number) => (step * columns.length) / parts;
-  const balance = (at: number) =>
-    Math.min(...Array.from({length: parts - 1}, (_, step) => Math.abs(at - ideal(step + 1))));
+  // Ukuran yang rata didahulukan; celah hanya memutus seri.
+  //
+  // Sebelumnya kebalikannya: celah terlebar menang, dan kerataan cuma pemutus seri. Itu
+  // membuat ukuran grouping ikut bentuk ruangan — enam baris dengan tiga saklar bisa
+  // jatuh jadi 3+2+1 kalau salah satu baloknya lebih tebal, padahal yang benar 2+2+2.
+  // Jumlah saklar menyebutkan ada berapa grouping; yang menentukan besarnya adalah
+  // pembagian baris yang sama banyak.
+  //
+  // Satu potongan dicari per batas ideal, bukan mengambil beberapa potongan terbaik
+  // sekaligus: yang kedua bisa memilih dua potongan yang sama-sama paling dekat ke
+  // batas yang sama, dan meninggalkan batas lain tanpa potongan.
+  //
+  // Celah tetap berperan, dan justru di tempat yang tepat: kalau dua posisi sama dekat
+  // ke batas ideal, yang celahnya lebih lebar menang. Di ruangan yang batas idealnya
+  // kebetulan jatuh di dinding — seperti bay yang lebarnya seragam — potongannya
+  // menempel ke dinding itu, bukan ke sembarang sisi.
+  const taken = new Set<number>();
+  for (let step = 1; step < parts; step++) {
+    const target = (step * columns.length) / parts;
 
-  const cuts = gaps
-    .slice()
-    .sort((a, b) => b.width - a.width || balance(a.at) - balance(b.at) || a.at - b.at)
-    .slice(0, parts - 1)
-    .map((gap) => gap.at)
-    .sort((a, b) => a - b);
+    const pick = gaps
+      .filter((gap) => !taken.has(gap.at))
+      .sort(
+        (a, b) =>
+          Math.abs(a.at - target) - Math.abs(b.at - target) || b.width - a.width || a.at - b.at
+      )[0];
+
+    if (pick) taken.add(pick.at);
+  }
+
+  const cuts = [...taken].sort((a, b) => a - b);
 
   const pieces: Device[][] = [];
   let start = 0;

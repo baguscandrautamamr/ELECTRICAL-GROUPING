@@ -709,9 +709,38 @@ pertama mengecilkan jangkauan pengelompokan sampai kumpulannya pecah, dan itu be
 hanya kalau ada celah. Di ruangan seragam tidak ada celah sama sekali: begitu
 jangkauannya turun di bawah jarak antar lampu, kumpulannya tidak pecah jadi dua
 melainkan langsung hancur jadi satu lampu per bagian — 30 lampu jadi 30 grouping.
-Sekarang yang dipotong celah antar baris, dan celah terlebar menang; di ruangan seragam
-semua celahnya sama, jadi seri diputus oleh keseimbangan supaya potongannya jatuh di
-tengah alih-alih di tepi.
+Sekarang yang dipotong celah antar baris.
+
+### Ukuran grouping dari pembagian rata, bukan dari celah terlebar
+
+Percobaan kedua memakai celah terlebar sebagai penentu tempat potong, dengan kerataan
+cuma sebagai pemutus seri. Salah arah: itu membuat **ukuran** grouping ikut bentuk
+ruangan, padahal yang menentukannya seharusnya jumlah saklar.
+
+Enam baris dengan tiga saklar harus jadi 2+2+2. Dengan celah-terlebar-menang, satu balok
+yang lebih tebal daripada yang lain sudah cukup membuatnya jatuh jadi 5+1 lalu terpecah
+lagi jadi 2+3+1 — angka yang tidak berhubungan dengan apa pun yang terlihat di denah.
+Sudah diukur ulang setelah dibalik: ruangan enam baris dengan celah 6.000 mm di tempat
+yang salah tetap menghasilkan 2+2+2.
+
+Jadi urutannya sekarang: **jumlah saklar menyebutkan ada berapa grouping, pembagian
+baris yang sama banyak menentukan besarnya, dan celah hanya memutus seri.** Yang
+terakhir itu tetap berguna dan justru di tempat yang tepat — kalau dua posisi sama-sama
+dekat ke batas ideal, yang celahnya lebih lebar menang, jadi potongan menempel ke
+dinding saat batas idealnya memang jatuh di sana.
+
+Satu potongan dicari **per batas ideal**, bukan dengan mengambil beberapa potongan
+terbaik sekaligus. Cara yang kedua bisa memilih dua potongan yang sama-sama paling dekat
+ke batas yang sama, lalu meninggalkan batas lain tanpa potongan sama sekali.
+
+"Rata" berarti sama banyak, bukan berukuran angka genap: sembilan baris dengan tiga
+saklar jadi 3+3+3, bukan 4+4+1. Yang tidak habis dibagi selisihnya paling banyak satu
+baris — 7 jadi 2+3+2, 8 jadi 3+2+3, 5 jadi 2+1+2.
+
+**Papan caturnya tetap.** Saklar membagi ruangan jadi beberapa grouping; papan catur
+membagi tiap grouping jadi dua kaki selang-seling. Tiga saklar di satu ruangan berarti
+tiga grouping dan enam garis. Dua pembagian yang bertingkat, bukan dua cara yang saling
+menggantikan — dan itu keputusan yang sengaja diambil, bukan sisa dari desain lama.
 
 Selama tabelnya belum terisi — model belum ditarik ulang oleh add-in yang membacanya —
 batas grouping jatuh ke kerapatan seperti sebelumnya, dan layar menyebutkan itu apa
