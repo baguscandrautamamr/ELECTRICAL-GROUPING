@@ -35,6 +35,7 @@ export function WiringPanel({
   onOptionsChange,
   plan,
   lineStyles,
+  lineStylesUnavailable,
   lineStyleId,
   onLineStyleChange,
   switchDataMissing,
@@ -48,6 +49,8 @@ export function WiringPanel({
   plan: WiringPlan | null;
   /** Line style dari model. Kosong berarti add-in belum pernah mengirimnya. */
   lineStyles: LineStyle[];
+  /** Benar kalau tabelnya sendiri belum ada — migrasi belum ditembakkan. */
+  lineStylesUnavailable: boolean;
   lineStyleId: string;
   onLineStyleChange: (id: string) => void;
   /** Benar kalau project ini belum punya data saklar sama sekali. */
@@ -133,7 +136,9 @@ export function WiringPanel({
             </Select>
 
             {lineStyles.length === 0 ? (
-              <p className="text-[12px] leading-relaxed text-muted">{t('lineStyleHint')}</p>
+              <p className="text-[12px] leading-relaxed text-muted">
+                {lineStylesUnavailable ? t('lineStyleNeedsMigration') : t('lineStyleHint')}
+              </p>
             ) : null}
 
             {/*

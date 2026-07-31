@@ -17,6 +17,18 @@ public sealed class CircuitSyncApi(SupabaseClient client)
 
     public SupabaseClient Client { get; } = client;
 
+    /// <summary>
+    /// Tabel yang ditolak database karena belum ada, dari migrasi yang belum ditembakkan.
+    /// </summary>
+    /// <remarks>
+    /// Sepasang dengan <see cref="SupabaseClient.MissingColumns"/>. Dikumpulkan supaya UI
+    /// bisa menyebutkannya: melewati sebuah tabel diam-diam membuat fitur yang
+    /// bergantung padanya mati tanpa satu pun petunjuk kenapa.
+    /// </remarks>
+    public IReadOnlyCollection<string> MissingTables => _missingTables;
+
+    private readonly HashSet<string> _missingTables = new(StringComparer.Ordinal);
+
     // ---------------------------------------------------------------- project
 
     public Task<IReadOnlyList<ProjectRow>> ListProjectsAsync(CancellationToken ct = default) =>
@@ -52,13 +64,12 @@ public sealed class CircuitSyncApi(SupabaseClient client)
     {
         var stamp = DateTimeOffset.UtcNow.AddSeconds(-1);
 
+        // `levels`, `panels`, dan `devices` datang dari migrasi pertama: kalau ketiganya
+        // tidak ada, database ini memang belum disiapkan, dan user berhak berhenti dengan
+        // pesan — bukan mendapat tarikan model yang seolah berhasil padahal kosong.
         await UpsertBatchedAsync("levels",
             snapshot.Levels.Select(l => l with { ProjectId = projectId }).ToList(),
             "project_id,level_key", ct).ConfigureAwait(false);
-
-        await UpsertBatchedAsync("layouts",
-            snapshot.Layouts.Select(l => l with { ProjectId = projectId }).ToList(),
-            "project_id,revit_unique_id", ct).ConfigureAwait(false);
 
         await UpsertBatchedAsync("panels",
             snapshot.Panels.Select(p => p with { ProjectId = projectId }).ToList(),
@@ -68,27 +79,35 @@ public sealed class CircuitSyncApi(SupabaseClient client)
             snapshot.Devices.Select(d => d with { ProjectId = projectId }).ToList(),
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
 
-        await UpsertBatchedAsync("lighting_devices",
+        // Sisanya datang dari migrasi yang lebih baru, jadi masing-masing boleh belum ada.
+        await UpsertOptionalAsync("layouts",
+            snapshot.Layouts.Select(l => l with { ProjectId = projectId }).ToList(),
+            "project_id,revit_unique_id", ct).ConfigureAwait(false);
+
+        await UpsertOptionalAsync("lighting_devices",
             snapshot.LightingDevices.Select(d => d with { ProjectId = projectId }).ToList(),
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
 
-        await UpsertBatchedAsync("line_styles",
+        await UpsertOptionalAsync("line_styles",
             snapshot.LineStyles.Select(s => s with { ProjectId = projectId }).ToList(),
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
 
         // Setelah layouts dan devices: keduanya jadi tujuan foreign key baris ini.
-        await UpsertBatchedAsync("layout_devices",
+        await UpsertOptionalAsync("layout_devices",
             snapshot.LayoutDevices.Select(m => m with { ProjectId = projectId }).ToList(),
             "project_id,layout_unique_id,device_unique_id", ct).ConfigureAwait(false);
 
         // Idem, dengan tujuan layouts dan lighting_devices.
-        await UpsertBatchedAsync("layout_lighting_devices",
+        await UpsertOptionalAsync("layout_lighting_devices",
             snapshot.LayoutLightingDevices.Select(m => m with { ProjectId = projectId }).ToList(),
             "project_id,layout_unique_id,lighting_device_unique_id", ct).ConfigureAwait(false);
 
         // Sapuan keanggotaan ditaruh terakhir: menghapus layout, device, atau saklar lebih
         // dulu sudah membawa keanggotaannya lewat cascade, jadi yang tersisa di sini
         // hanya keanggotaan yang hilang sementara kedua ujungnya masih ada.
+        //
+        // Tabel yang tadi dilewati karena belum ada tidak perlu dicoba lagi di sini —
+        // jawabannya sudah pasti sama.
         var cutoff = Uri.EscapeDataString(stamp.UtcDateTime.ToString("o", CultureInfo.InvariantCulture));
         foreach (var table in new[]
                  {
@@ -96,8 +115,20 @@ public sealed class CircuitSyncApi(SupabaseClient client)
                      "layout_devices", "layout_lighting_devices",
                  })
         {
-            await Client.DeleteAsync(table, $"project_id=eq.{projectId}&updated_at=lt.{cutoff}", ct)
-                .ConfigureAwait(false);
+            if (_missingTables.Contains(table))
+            {
+                continue;
+            }
+
+            try
+            {
+                await Client.DeleteAsync(table, $"project_id=eq.{projectId}&updated_at=lt.{cutoff}", ct)
+                    .ConfigureAwait(false);
+            }
+            catch (CloudException ex) when (PostgrestSchema.MissingTable(ex.Body) is { } missing)
+            {
+                _missingTables.Add(missing);
+            }
         }
 
         await Client.InsertAsync<SyncJobRow, object>("sync_jobs", new
@@ -240,6 +271,33 @@ public sealed class CircuitSyncApi(SupabaseClient client)
         foreach (var chunk in Chunk(rows, BatchSize))
         {
             await Client.UpsertAsync(table, chunk, onConflict, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Upsert ke tabel yang boleh saja belum ada di database.
+    /// </summary>
+    /// <remarks>
+    /// Add-in dipasang user lewat ZIP; migrasi ditembakkan lewat <c>supabase db push</c>.
+    /// Selisih di antara keduanya bukan kemungkinan melainkan keadaan biasa, dan setiap
+    /// fitur baru datang bersama tabelnya sendiri. Tanpa toleransi ini satu tabel yang
+    /// belum ada menggagalkan seluruh tarikan model — device dan panel yang sudah lama
+    /// ada pun tidak terkirim, dan yang sampai ke user hanya <c>http_404</c>.
+    ///
+    /// Yang dilewati dicatat, bukan didiamkan, supaya UI bisa menyebut tabelnya beserta
+    /// jalan keluarnya. Begitu migrasinya diterapkan, tarikan berikutnya mengisinya
+    /// sendiri — tanpa memasang ulang add-in.
+    /// </remarks>
+    private async Task UpsertOptionalAsync<T>(string table, IReadOnlyList<T> rows, string onConflict,
+        CancellationToken ct)
+    {
+        try
+        {
+            await UpsertBatchedAsync(table, rows, onConflict, ct).ConfigureAwait(false);
+        }
+        catch (CloudException ex) when (PostgrestSchema.MissingTable(ex.Body) is { } missing)
+        {
+            _missingTables.Add(missing);
         }
     }
 

@@ -16,7 +16,7 @@ import type {
   Panel,
   SymbolOverride
 } from '@/lib/contract';
-import {firstProblem, optional} from '@/lib/supabase/errors';
+import {classifyError, firstProblem, optional} from '@/lib/supabase/errors';
 import {allRows} from '@/lib/supabase/pages';
 import {createClient} from '@/lib/supabase/server';
 import {PlanView} from './plan-view';
@@ -239,6 +239,10 @@ export default async function PlanPage({params}: Params) {
           symbolOverrides={symbolOverrides}
           lightingDevices={lightingDevices}
           lineStyles={(optional(lineStyles) ?? []) as LineStyle[]}
+          // Dropdown kosong punya dua sebab yang jalan keluarnya berbeda: tabelnya belum
+          // ada (jalankan migrasi) atau model belum ditarik (tarik dari add-in). Yang
+          // kedua adalah petunjuk yang salah untuk yang pertama.
+          lineStylesUnavailable={classifyError(lineStyles.error) === 'schema'}
           switchDataMissing={(optional(anySwitch) ?? []).length === 0}
         />
       )}

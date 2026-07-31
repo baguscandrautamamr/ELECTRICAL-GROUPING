@@ -143,6 +143,7 @@ public static class Translations
         ["log.wiring_detail"] = "Keterangan Revit: {0}",
         ["log.network"] = "Cloud tidak bisa dihubungi. Periksa koneksi lalu coba lagi.",
         ["log.missing_columns"] = "Database belum punya kolom {0}. Bagian itu dilewati; jalankan migrasi terbaru (supabase db push) lalu tarik ulang model.",
+        ["log.missing_tables"] = "Database belum punya tabel {0}, jadi fiturnya belum jalan di web. Sisa model tetap terkirim. Jalankan migrasi terbaru (supabase db push) lalu tarik ulang model.",
 
         ["plan.empty_circuit"] = "Circuit tanpa device",
         ["plan.unknown_panel"] = "Panel sudah tidak ada di model",
@@ -244,6 +245,7 @@ public static class Translations
         ["log.wiring_detail"] = "Revit said: {0}",
         ["log.network"] = "The cloud is unreachable. Check the connection and try again.",
         ["log.missing_columns"] = "The database does not have the {0} column yet. That part was skipped; run the latest migration (supabase db push), then push the model again.",
+        ["log.missing_tables"] = "The database does not have the {0} table yet, so that feature is not live on the web. The rest of the model was pushed. Run the latest migration (supabase db push), then push the model again.",
 
         ["plan.empty_circuit"] = "Circuit has no devices",
         ["plan.unknown_panel"] = "That panel no longer exists in the model",

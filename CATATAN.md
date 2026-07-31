@@ -576,6 +576,35 @@ ketahuan. Logikanya ada di `PostgrestSchema` di Core — tidak menyentuh HTTP, j
 bisa dites di runner Linux, dan justru perilaku ini yang perlu dites karena ia hanya
 berjalan pada keadaan yang jarang ada di mesin orang yang menulis kodenya.
 
+Itu menutup kolom yang belum ada, dan hanya itu. **Tabel** yang belum ada tetap
+menjatuhkan seluruh tarikan model, dan itu justru kasus yang lebih sering: setiap
+fitur baru datang bersama tabelnya sendiri, bukan bersama satu kolom di tabel lama.
+Gejalanya sama persis dengan yang di atas, satu tingkat lebih besar:
+
+```
+http_404 — Could not find the table 'public.line_styles' in the schema cache
+```
+
+Satu tabel baru menjatuhkan device, panel, level, dan keanggotaan layout sekaligus —
+padahal semuanya sudah ada di database sejak lama.
+
+Sekarang `PostgrestSchema.MissingTable` membaca `PGRST205` (dan `42P01`, yang dipakai
+Postgres untuk hal yang sama pada fungsi), dan `CircuitSyncApi.UpsertOptionalAsync`
+melewati tabel itu lalu melanjutkan. Yang dilewati ikut disebutkan di log, dengan
+jalan keluarnya: jalankan `supabase db push`.
+
+Pembagian mana yang boleh dilewati ditulis eksplisit di pemanggilnya, bukan
+disimpulkan: `levels`, `panels`, dan `devices` datang dari migrasi pertama dan tetap
+keras — kalau ketiganya tidak ada, database ini memang belum disiapkan, dan user
+berhak berhenti dengan pesan alih-alih menerima tarikan yang seolah berhasil padahal
+kosong. Sisanya boleh belum ada. Pembagian itu sama dengan yang sudah dipakai web
+lewat `firstProblem()` dan `optional()`.
+
+Di web, dropdown line style yang kosong sekarang membedakan dua sebabnya. Tabelnya
+belum ada → "jalankan migrasi". Tabelnya ada tapi kosong → "tarik model dari add-in".
+Petunjuk yang kedua salah untuk keadaan yang pertama, dan mengirim orang mencari di
+tempat yang keliru.
+
 ### Sisa pekerjaan dihitung dua kali, dengan sengaja
 
 `unconnected_devices` memecah per denah, dan satu lampu bisa tampak di dua denah
