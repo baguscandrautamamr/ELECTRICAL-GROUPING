@@ -271,21 +271,64 @@ function columnGroups(devices: readonly Device[], tolerance: number): Device[][]
 /**
  * Berapa saklar yang jatuh ke tiap kumpulan lampu.
  *
- * Tiap saklar dimiliki kumpulan yang lampunya paling dekat dengannya. Diputuskan
- * lewat perbandingan antar kumpulan, bukan per kumpulan sendiri-sendiri: saklar di
- * dinding pemisah berjarak hampir sama ke dua ruangan, dan menghitungnya di dua-duanya
- * membuat kedua ruangan terpecah lebih banyak daripada yang sebenarnya.
+ * **Nama ruangan menang kalau ada.** Revit sudah menjawab pertanyaannya: saklar yang
+ * `room_name`-nya "PANTRY" milik ruangan PANTRY, seberapa pun dekatnya ia ke lampu
+ * tetangga. Sebelumnya nama itu diabaikan dan semuanya diputuskan lewat jarak, padahal
+ * datanya sudah ada di kontrak — sama seperti pada lampu, yang `room_name`-nya juga
+ * dipakai apa adanya di `roomsOf`.
+ *
+ * Sisanya baru ditebak dari jarak: saklar dimiliki kumpulan yang lampunya paling dekat.
+ * Diputuskan lewat perbandingan antar kumpulan, bukan per kumpulan sendiri-sendiri —
+ * saklar di dinding pemisah berjarak hampir sama ke dua ruangan, dan menghitungnya di
+ * dua-duanya membuat kedua ruangan terpecah lebih banyak daripada yang sebenarnya.
+ *
+ * Tebakannya punya **batas jarak**. Tanpa itu setiap saklar selalu dapat pemilik, sejauh
+ * apa pun ia: saklar yang lampunya sendiri tidak tampak di denah ini — dimatikan di view,
+ * atau di ruangan yang belum ada lampunya — ikut memecah ruangan terdekat yang tidak
+ * dikendalikannya. Gejalanya ruangan yang terbelah tanpa sebab yang terlihat di denah.
+ *
+ * Yang masih belum terpecahkan: saklar yang membawa nama ruangan yang tidak ada di denah
+ * ini tetap bisa terhitung lewat jarak. "Tidak ada ruangan bernama KORIDOR di sini" benar
+ * baik saat lampu koridor memang tidak ikut, maupun saat lampu koridor ikut tapi tidak
+ * bernama — dan keduanya tidak bisa dibedakan dari data yang ada. Yang dipilih adalah
+ * risiko yang lebih kecil: menghitungnya lewat jarak, dalam batas jangkauan, alih-alih
+ * membuangnya dan mengosongkan data saklar justru di gaya pemodelan yang paling umum.
  */
-function switchCounts(rooms: readonly {devices: Device[]}[], switches: readonly Point[]): number[] {
+function switchCounts(
+  rooms: readonly {name: string | null; devices: Device[]}[],
+  switches: readonly LightingDevice[],
+  spacing: number
+): number[] {
   const counts = rooms.map(() => 0);
 
-  for (const point of switches) {
+  const byName = new Map<string, number>();
+  rooms.forEach((room, index) => {
+    const name = room.name?.trim();
+    if (name && !byName.has(name)) byName.set(name, index);
+  });
+
+  const reach = spacing * ROOM_REACH;
+
+  for (const device of switches) {
+    const named = device.room_name?.trim();
+    const owned = named ? byName.get(named) : undefined;
+
+    if (owned !== undefined) {
+      counts[owned]!++;
+      continue;
+    }
+
+    // Nama yang tidak cocok dengan ruangan mana pun **tidak** membuat saklar dibuang, dan
+    // itu penting: lampu sering tidak bernama sementara saklarnya bernama. Downlight yang
+    // di-host ceiling biasanya tidak punya Room Calculation Point, jadi ruangannya jatuh
+    // jadi kiraan tanpa nama, sedangkan saklar di dinding tetap membawa "PANTRY". Membuang
+    // saklar itu akan mengosongkan jumlah saklar justru di denah yang paling butuh.
     let owner = -1;
     let nearest = Infinity;
 
     rooms.forEach((room, index) => {
-      for (const device of room.devices) {
-        const gap = Math.hypot(point.x - device.x_mm, point.y - device.y_mm);
+      for (const lamp of room.devices) {
+        const gap = Math.hypot(device.x_mm - lamp.x_mm, device.y_mm - lamp.y_mm);
         if (gap < nearest) {
           nearest = gap;
           owner = index;
@@ -293,7 +336,7 @@ function switchCounts(rooms: readonly {devices: Device[]}[], switches: readonly 
       }
     });
 
-    if (owner >= 0) counts[owner]!++;
+    if (owner >= 0 && nearest <= reach) counts[owner]!++;
   }
 
   return counts;
@@ -861,7 +904,7 @@ export function planWiring(
   // saklar yang jatuh ke masing-masing. Dua langkah, bukan satu: saklar hanya bisa
   // dibagikan setelah ada kumpulan untuk dibandingkan.
   const initial = roomsOf(wirable, spacing);
-  const counts = switchCounts(initial, lightingDevices.map((device) => ({x: device.x_mm, y: device.y_mm})));
+  const counts = switchCounts(initial, lightingDevices, spacing);
 
   const grouped = initial.flatMap((room, index) => {
     const parts = splitBySwitches(room.devices, counts[index] ?? 0, spacing);

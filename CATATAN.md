@@ -711,6 +711,50 @@ jangkauannya turun di bawah jarak antar lampu, kumpulannya tidak pecah jadi dua
 melainkan langsung hancur jadi satu lampu per bagian — 30 lampu jadi 30 grouping.
 Sekarang yang dipotong celah antar baris.
 
+### Satu saklar di dinding jangan terhitung dua
+
+Dilaporkan dari pemakaian: ruangan PANTRY yang di Revit punya satu saklar muncul terbelah
+dua di web. Dengan satu saklar `splitBySwitches` mengembalikan satu bagian utuh, jadi
+terbelahnya berarti jumlah saklarnya terhitung dua atau lebih. Ada tiga sebab yang
+ditemukan saat menelusuri kodenya, dan ketiganya membuat hitungannya **lebih besar**
+daripada kenyataan.
+
+**Komponen bersarang terhitung sendiri-sendiri.** Satu saklar bisa dimodelkan sebagai
+family berisi beberapa komponen di kategori yang sama — biasa pada saklar dua atau tiga
+gang. Tiap komponen muncul sebagai `FamilyInstance` tersendiri di collector, jadi satu
+saklar di dinding terhitung dua atau tiga. Yang dihitung sekarang instance tingkat atas
+(`SuperComponent is null`) — yang engineer hitung saat melihat denah. Kalau sebuah gang
+memang harus jadi grouping sendiri, tempatkan instance terpisah di Revit.
+
+Penyaringan itu tidak diberlakukan ke lampu, dan itu disengaja. Family lampu bisa berisi
+beberapa lampu bersarang yang masing-masing punya connector listrik dan memang harus bisa
+masuk circuit; membuangnya akan menghilangkan titik yang sah dari denah. Sub-komponen tanpa
+connector sudah tidak ikut wiring lewat `isSelectable`.
+
+**Nama ruangan diabaikan.** `switchCounts` memutuskan pemilik saklar hanya dari jarak,
+padahal `room_name` sudah ada di kontrak dan Revit sudah menjawabnya. Sekarang nama menang
+kalau cocok dengan ruangan bernama — saklar "PANTRY" milik PANTRY, sedekat apa pun ia ke
+lampu tetangga.
+
+**Tebakan jarak tanpa batas.** Tanpa batas, setiap saklar selalu dapat pemilik sejauh apa
+pun ia. Saklar yang lampunya sendiri tidak tampak di denah ini ikut memecah ruangan
+terdekat yang tidak dikendalikannya. Sekarang tebakannya dibatasi `ROOM_REACH` kali jarak
+khas antar lampu.
+
+Nama yang tidak cocok dengan ruangan mana pun **tidak** membuat saklar dibuang, dan itu
+sengaja: lampu sering tidak bernama sementara saklarnya bernama, karena downlight
+ceiling-hosted biasanya tidak punya Room Calculation Point. Konsekuensi yang diterima —
+saklar yang membawa nama ruangan yang tidak ada di denah ini tetap bisa terhitung lewat
+jarak, karena "tidak ada ruangan bernama itu di sini" benar baik saat lampunya tidak ikut
+maupun saat lampunya ikut tapi tidak bernama.
+
+**Dan yang paling penting: jumlahnya sekarang ditampilkan.** Tiap baris di daftar ruangan
+menyebut berapa saklar yang terhitung untuknya. Itu satu-satunya angka yang menjelaskan
+kenapa sebuah ruangan terbelah, dan tanpa ditampilkan gejalanya cuma garis yang terputus —
+tidak ada yang menunjuk ke sebabnya. Kalau lain kali sebuah ruangan terbelah tanpa alasan,
+angka itu langsung memisahkan "modelnya memang punya dua saklar" dari "kodenya salah
+hitung".
+
 ### Ukuran grouping dari pembagian rata, bukan dari celah terlebar
 
 Percobaan kedua memakai celah terlebar sebagai penentu tempat potong, dengan kerataan

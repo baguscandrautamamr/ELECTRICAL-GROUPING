@@ -48,7 +48,17 @@ public static class ModelReader
             });
         }
 
-        var layoutData = ReadLayouts(doc);
+        var lightingDevices = ReadLightingDevices(doc, levels);
+
+        // Keanggotaan layout dibatasi ke baris yang benar-benar ikut terkirim. Foreign key
+        // di `layout_devices` dan `layout_lighting_devices` menunjuk tabel induknya, jadi
+        // keanggotaan yang menyebut elemen yang tidak ikut akan ditolak database — dan yang
+        // ditolak bukan barisnya saja melainkan seluruh batch, dengan pesan yang tidak
+        // menyebut elemen mana. Menyaringnya di sini membuat invariannya struktural alih-alih
+        // dua filter di dua tempat yang harus dijaga tetap seiring.
+        var layoutData = ReadLayouts(doc,
+            devices.Select(d => d.RevitUniqueId).ToHashSet(StringComparer.Ordinal),
+            lightingDevices.Select(d => d.RevitUniqueId).ToHashSet(StringComparer.Ordinal));
 
         return new ModelSnapshot
         {
@@ -56,7 +66,7 @@ public static class ModelReader
             Layouts = layoutData.Rows,
             Panels = panels,
             Devices = devices,
-            LightingDevices = ReadLightingDevices(doc, levels),
+            LightingDevices = lightingDevices,
             LayoutDevices = layoutData.Devices,
             LayoutLightingDevices = layoutData.LightingDevices,
             LineStyles = ReadLineStyles(doc),
@@ -77,6 +87,18 @@ public static class ModelReader
     /// Tidak ada penyaringan family di sini: apa pun yang Revit taruh di kategori itu
     /// dianggap penentu grouping. Menebak mana yang "saklar sungguhan" dari namanya akan
     /// meleset di setiap template yang penamaannya berbeda.
+    ///
+    /// Yang <b>disaring</b> adalah komponen bersarang. Satu saklar bisa dimodelkan sebagai
+    /// family berisi beberapa komponen di kategori yang sama — biasa pada saklar dua atau
+    /// tiga gang — dan tiap komponen itu muncul sebagai <see cref="FamilyInstance"/>
+    /// tersendiri di collector. Tanpa penyaringan ini satu saklar di dinding terhitung dua
+    /// atau tiga, dan ruangan yang mestinya utuh terpecah sebanyak itu. Gejalanya justru
+    /// tidak menunjuk ke sini: yang terlihat hanya garis wiring yang terbelah, sementara di
+    /// denah Revit saklarnya cuma satu.
+    ///
+    /// Yang dihitung karena itu instance tingkat atas — yang engineer hitung saat melihat
+    /// denah. Kalau sebuah gang memang harus jadi grouping sendiri, tempatkan instance
+    /// terpisah di Revit, bukan komponen bersarang.
     /// </remarks>
     private static List<LightingDeviceRow> ReadLightingDevices(Document doc, IReadOnlyList<LevelRow> levels)
     {
@@ -86,7 +108,8 @@ public static class ModelReader
             .OfCategory(BuiltInCategory.OST_LightingDevices)
             .WhereElementIsNotElementType()
             .OfClass(typeof(FamilyInstance))
-            .Cast<FamilyInstance>();
+            .Cast<FamilyInstance>()
+            .Where(instance => instance.SuperComponent is null);
 
         foreach (var instance in instances)
         {
@@ -159,8 +182,14 @@ public static class ModelReader
     /// View denah yang dipakai sebagai halaman kerja di web. Yang memutuskan view mana
     /// yang ikut adalah <see cref="LayoutFilter"/> di Core; di sini hanya penerjemahan.
     /// </summary>
+    /// <param name="knownDevices">
+    /// <c>UniqueId</c> device yang ikut terkirim. Keanggotaan di luar daftar ini dibuang,
+    /// karena foreign key-nya akan ditolak database.
+    /// </param>
+    /// <param name="knownLightingDevices">Idem, untuk saklar.</param>
     private static (List<LayoutRow> Rows, List<LayoutDeviceRow> Devices,
-        List<LayoutLightingDeviceRow> LightingDevices) ReadLayouts(Document doc)
+        List<LayoutLightingDeviceRow> LightingDevices) ReadLayouts(Document doc,
+        IReadOnlySet<string> knownDevices, IReadOnlySet<string> knownLightingDevices)
     {
         var rows = new List<LayoutRow>();
         var members = new List<LayoutDeviceRow>();
@@ -202,7 +231,7 @@ public static class ModelReader
                 CropMaxYMm = crop?.MaxY,
             });
 
-            foreach (var deviceId in VisibleDeviceIds(doc, view, kind))
+            foreach (var deviceId in VisibleDeviceIds(doc, view, kind).Where(knownDevices.Contains))
             {
                 members.Add(new LayoutDeviceRow
                 {
@@ -215,7 +244,8 @@ public static class ModelReader
             // denah lighting di satu lantai punya isi berbeda, dan saklar yang mengendalikan
             // lampu biasa tidak boleh ikut memecah denah emergency. Kategorinya tidak
             // bergantung `kind` — yang memutuskan tetap view-nya sendiri.
-            foreach (var switchId in VisibleIds(doc, view, BuiltInCategory.OST_LightingDevices))
+            foreach (var switchId in VisibleIds(doc, view, BuiltInCategory.OST_LightingDevices)
+                         .Where(knownLightingDevices.Contains))
             {
                 switchMembers.Add(new LayoutLightingDeviceRow
                 {
