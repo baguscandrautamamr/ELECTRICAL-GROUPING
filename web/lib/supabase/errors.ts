@@ -34,3 +34,19 @@ export function firstProblem(...errors: QueryError[]): LoadProblem | null {
   }
   return null;
 }
+
+/**
+ * Data dari query yang boleh saja belum ada.
+ *
+ * Fitur yang datang lewat migrasi lebih baru — tabel `layout_devices` dan fungsi
+ * penghitungnya — tidak boleh menjatuhkan seluruh halaman hanya karena migrasinya
+ * belum ditembakkan ke project Supabase. Yang benar adalah kembali ke perilaku
+ * sebelum fitur itu ada, bukan memasang layar "database belum disiapkan" di atas
+ * database yang sebenarnya sehat.
+ *
+ * Jangan pakai ini untuk tabel inti. Kalau `projects` atau `devices` hilang, itu
+ * memang penyiapan yang belum jalan, dan user berhak diberi tahu.
+ */
+export function optional<T>(result: {data: T | null; error: QueryError}): T | null {
+  return result.error ? null : result.data;
+}

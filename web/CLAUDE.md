@@ -21,9 +21,9 @@ app/
     (auth)/login/
     setup/                                         diagnosa penyiapan, tanpa login
     (app)/projects/
-    (app)/projects/[projectId]/[levelId]/[kind]/   halaman denah
+    (app)/projects/[projectId]/layouts/[layoutId]/ halaman denah
 components/
-  plan/          kanvas SVG, marker device, seleksi
+  plan/          kanvas SVG, marker device, seleksi, system browser
   circuits/      daftar circuit, panel picker
 lib/
   supabase/      client browser dan server, config, klasifikasi error query
@@ -34,8 +34,10 @@ supabase/
   migrations/
 ```
 
-Rute denah dipecah sampai level dan kind supaya state "lantai 2, tab lighting"
-bisa di-bookmark dan dibagikan. Jangan simpan pilihan itu hanya di state React.
+Halaman denah dikunci satu **layout** — cerminan view denah Revit, yang sudah
+memuat lantai dan jenis sekaligus beserta crop region dan skalanya. Kuncinya
+`revit_unique_id` view, jadi tautan tetap sah antar tarikan model. Jangan simpan
+pilihan itu hanya di state React.
 
 ## Aturan keras
 
@@ -79,7 +81,7 @@ duplikasi tipenya di komponen.
 
 ```
 device:   revit_unique_id, kind, level_key, room_name, family_key,
-          x_mm, y_mm, va, status, circuit_number
+          x_mm, y_mm, va, status, circuit_number, panel_unique_id
 panel:    revit_unique_id, name, prefix, distribution_system,
           voltage, phase, slots_total, slots_used, is_usable
 circuit:  id, panel_unique_id, kind, device_unique_ids[], circuit_number, status

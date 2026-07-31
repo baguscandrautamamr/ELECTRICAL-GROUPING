@@ -35,7 +35,22 @@ public sealed class SyncController : IDisposable
     private readonly AddinSettings _settings;
     private readonly System.Timers.Timer _timer;
 
+    /// <summary>Model harus diam selama ini dulu sebelum tarikan otomatis berjalan.</summary>
+    private static readonly TimeSpan QuietPeriod = TimeSpan.FromSeconds(10);
+
+    /// <summary>Jarak minimum antar tarikan otomatis, seaktif apa pun model dikerjakan.</summary>
+    private static readonly TimeSpan MinimumAutoPushGap = TimeSpan.FromSeconds(60);
+
     private int _busy;
+    private int _modelDirty;
+    private long _lastChangeTicks;
+    private DateTime _lastAutoPushAt = DateTime.MinValue;
+
+    /// <summary>
+    /// Project dan sidik jari tarikan terakhir yang berhasil. Dipakai membuang unggahan
+    /// yang isinya sama persis dengan yang sudah ada di cloud.
+    /// </summary>
+    private (Guid Project, string Fingerprint)? _lastPush;
 
     public SyncController(RevitTaskQueue queue, AddinSettings settings, SupabaseClient? client = null)
     {
@@ -45,7 +60,7 @@ public sealed class SyncController : IDisposable
         _api = new CircuitSyncApi(_client);
 
         _timer = new System.Timers.Timer { AutoReset = true };
-        _timer.Elapsed += (_, _) => CheckJobs(quiet: true);
+        _timer.Elapsed += (_, _) => Tick();
 
         _queue.OnError = ex => Log(LogKind.Error, "log.apply_failed", ex.Message);
     }
@@ -90,9 +105,94 @@ public sealed class SyncController : IDisposable
         _settings.AutoPoll = enabled;
         _settings.PollSeconds = seconds;
         _settings.Save();
+        RestartTimer();
+    }
 
-        _timer.Interval = Math.Max(5, seconds) * 1000d;
-        _timer.Enabled = enabled;
+    public void SetAutoPush(bool enabled)
+    {
+        _settings.AutoPush = enabled;
+        _settings.Save();
+        RestartTimer();
+    }
+
+    private void RestartTimer()
+    {
+        _timer.Interval = Math.Max(5, _settings.PollSeconds) * 1000d;
+        _timer.Enabled = _settings.AutoPoll || _settings.AutoPush;
+    }
+
+    /// <summary>
+    /// Menandai bahwa ada device, panel, atau family yang berubah di Revit. Dipanggil dari
+    /// event <c>DocumentChanged</c>, jadi harus murah — pekerjaannya menunggu detak timer.
+    /// </summary>
+    public void NoteModelChanged()
+    {
+        Interlocked.Exchange(ref _modelDirty, 1);
+        Interlocked.Exchange(ref _lastChangeTicks, DateTime.UtcNow.Ticks);
+    }
+
+    /// <summary>
+    /// Satu detak: kirim ulang model kalau perlu, lalu ambil rencana dari web.
+    /// </summary>
+    /// <remarks>
+    /// Urutannya disengaja. Rencana dari web menunjuk device lewat <c>UniqueId</c>, jadi
+    /// mengirim model lebih dulu membuat rencana yang datang divalidasi terhadap keadaan
+    /// terbaru — bukan terhadap model yang sudah berubah sejak tarikan terakhir.
+    ///
+    /// Detak dilewati selagi ada pekerjaan berjalan. Snapshot model besar bisa lebih lama
+    /// dari intervalnya, dan menumpuknya hanya menghasilkan antrean request yang saling
+    /// mendahului.
+    /// </remarks>
+    private void Tick()
+    {
+        if (Busy)
+        {
+            return;
+        }
+
+        if (ShouldAutoPush())
+        {
+            PushSnapshot(quiet: true);
+        }
+
+        if (_settings.AutoPoll)
+        {
+            CheckJobs(quiet: true);
+        }
+    }
+
+    /// <summary>
+    /// Menahan tarikan otomatis supaya tidak berjalan di tengah pekerjaan user.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ModelReader.Read"/> berjalan di thread utama Revit: ia memindai seluruh
+    /// fixture dan menghitung isi tiap view denah. Menjalankannya tiap detak selama user
+    /// menggambar akan terasa sebagai Revit yang tersendat berkala.
+    ///
+    /// Dua rem. <b>Jeda tenang</b> — model harus diam dulu, jadi tarikan terjadi di sela
+    /// pekerjaan, bukan di tengahnya. <b>Jarak minimum</b> — sesi menggambar panjang yang
+    /// penuh jeda pendek tetap tidak menghasilkan tarikan beruntun.
+    ///
+    /// Tanda kotor sengaja tidak dibersihkan di sini, melainkan setelah tarikan benar-benar
+    /// selesai. Kegagalan jaringan tidak boleh membuat perubahan hilang diam-diam.
+    /// </remarks>
+    private bool ShouldAutoPush()
+    {
+        if (!_settings.AutoPush || !_client.IsSignedIn || Volatile.Read(ref _modelDirty) == 0)
+        {
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        var lastChange = new DateTime(Interlocked.Read(ref _lastChangeTicks), DateTimeKind.Utc);
+
+        if (now - lastChange < QuietPeriod || now - _lastAutoPushAt < MinimumAutoPushGap)
+        {
+            return false;
+        }
+
+        _lastAutoPushAt = now;
+        return true;
     }
 
     // ---------------------------------------------------------------- auth
@@ -227,46 +327,16 @@ public sealed class SyncController : IDisposable
 
     // ---------------------------------------------------------------- snapshot
 
-    public void PushSnapshot()
-    {
-        if (!EnsureSignedIn())
-        {
-            return;
-        }
-
-        Log(LogKind.Info, "log.push_start");
-
-        _queue.Post(app =>
-        {
-            if (!TryContext(app, out var doc, out var projectId))
-            {
-                return;
-            }
-
-            var snapshot = ModelReader.Read(doc);
-            LastSnapshot = snapshot;
-            Changed();
-
-            RunInBackground(async () =>
-            {
-                await _api.PushSnapshotAsync(projectId, snapshot).ConfigureAwait(false);
-                Log(LogKind.Ok, "log.push_done", snapshot.Devices.Count, snapshot.Panels.Count);
-            });
-        });
-    }
-
-    // ---------------------------------------------------------------- apply
-
-    /// <summary>
-    /// Mengambil satu job dari antrean dan menerapkannya. Tiga lompatan thread:
-    /// baca model (thread Revit) → ambil rencana (jaringan) → apply (thread Revit)
-    /// → tulis balik (jaringan).
-    /// </summary>
-    public void CheckJobs(bool quiet = false)
+    public void PushSnapshot(bool quiet = false)
     {
         if (!EnsureSignedIn(quiet))
         {
             return;
+        }
+
+        if (!quiet)
+        {
+            Log(LogKind.Info, "log.push_start");
         }
 
         _queue.Post(app =>
@@ -278,67 +348,143 @@ public sealed class SyncController : IDisposable
 
             var snapshot = ModelReader.Read(doc);
             LastSnapshot = snapshot;
+            Changed();
 
             RunInBackground(async () =>
             {
-                var jobs = await _api.FetchQueuedApplyJobsAsync(projectId).ConfigureAwait(false);
-                if (jobs.Count == 0)
-                {
-                    if (!quiet)
-                    {
-                        Log(LogKind.Info, "log.no_job");
-                    }
+                // Sidik jari dihitung di sini, bukan di thread Revit: serialisasi ratusan
+                // baris tidak perlu ikut menahan UI.
+                var fingerprint = snapshot.Fingerprint();
+                var unchanged = _lastPush is { } last &&
+                                last.Project == projectId &&
+                                last.Fingerprint == fingerprint;
 
+                // Tarikan manual selalu jadi. User yang menekan tombol berhak melihat
+                // sesuatu terjadi, dan itu juga satu-satunya jalan memulihkan cloud yang
+                // pernah diubah dari luar.
+                if (unchanged && quiet)
+                {
+                    Interlocked.Exchange(ref _modelDirty, 0);
                     return;
                 }
 
-                var job = jobs[0];
-                var circuits = await _api.FetchCircuitsAsync(projectId, job.CircuitIds().ToList())
-                    .ConfigureAwait(false);
+                await _api.PushSnapshotAsync(projectId, snapshot).ConfigureAwait(false);
 
-                var validation = PlanValidator.Validate(circuits, snapshot);
-                foreach (var problem in validation.Problems)
-                {
-                    Log(LogKind.Warn, "log.job_error", problem.MessageKey);
-                }
-
-                if (validation.Accepted.Count == 0)
-                {
-                    await FailJobAsync(projectId, job, validation).ConfigureAwait(false);
-                    return;
-                }
-
-                Log(LogKind.Info, "log.job_found", validation.Accepted.Count);
-                ApplyOnRevitThread(projectId, job, validation);
+                _lastPush = (projectId, fingerprint);
+                Interlocked.Exchange(ref _modelDirty, 0);
+                Log(LogKind.Ok, "log.push_done", snapshot.Devices.Count, snapshot.Panels.Count);
+                WarnAboutMissingColumns();
             });
         });
     }
 
-    private void ApplyOnRevitThread(Guid projectId, SyncJobRow job, PlanValidation validation)
+    // ---------------------------------------------------------------- apply
+
+    /// <summary>
+    /// Menerapkan <b>seluruh</b> job apply yang mengantre, satu per satu sampai habis.
+    /// </summary>
+    /// <remarks>
+    /// Dulu hanya <c>jobs[0]</c> yang dikerjakan, jadi dua kali "Kirim ke Revit" dari web
+    /// berarti dua kali klik "Ambil rencana" di sini — dan sisanya diam di antrean tanpa
+    /// penjelasan.
+    ///
+    /// Model dibaca ulang untuk setiap job, bukan sekali di awal: job sebelumnya baru saja
+    /// mengubah model, dan memvalidasi job berikutnya terhadap snapshot basi akan menolak
+    /// device yang sebenarnya sah.
+    /// </remarks>
+    public void CheckJobs(bool quiet = false)
     {
-        _queue.Post(app =>
+        if (!EnsureSignedIn(quiet))
         {
-            var doc = app.ActiveUIDocument?.Document;
-            if (doc is null)
+            return;
+        }
+
+        RunInBackground(async () =>
+        {
+            var projectId = await _queue.PostAsync(app => BoundProjectId(app, quiet)).ConfigureAwait(false);
+            if (projectId is null)
             {
-                Log(LogKind.Warn, "log.no_document");
                 return;
             }
 
-            var options = new ApplyOptions { PlaceTags = _settings.PlaceTags };
-            var results = CircuitApplier.Apply(doc, validation.Accepted, options);
-
-            RunInBackground(async () =>
+            var jobs = await _api.FetchQueuedApplyJobsAsync(projectId.Value).ConfigureAwait(false);
+            if (jobs.Count == 0)
             {
-                await WriteBackAsync(projectId, job, validation, results).ConfigureAwait(false);
-            });
+                if (!quiet)
+                {
+                    Log(LogKind.Info, "log.no_job");
+                }
+
+                return;
+            }
+
+            if (jobs.Count > 1)
+            {
+                Log(LogKind.Info, "log.jobs_found", jobs.Count);
+            }
+
+            foreach (var job in jobs)
+            {
+                await ApplyJobAsync(projectId.Value, job).ConfigureAwait(false);
+            }
         });
     }
 
-    private async Task WriteBackAsync(Guid projectId, SyncJobRow job, PlanValidation validation,
-        IReadOnlyList<CircuitApplyResult> results)
+    /// <summary>
+    /// Satu job, empat lompatan thread: baca model (Revit) → ambil rencana (jaringan) →
+    /// apply (Revit) → tulis balik (jaringan).
+    /// </summary>
+    private async Task ApplyJobAsync(Guid projectId, SyncJobRow job)
     {
-        var devices = new List<DeviceRow>();
+        // Generic ditulis eksplisit: tanpa itu T tersimpul non-nullable dan cabang null
+        // di dalam lambda memicu CS8603, yang di CI diperlakukan sebagai error.
+        var snapshot = await _queue.PostAsync<ModelSnapshot?>(app =>
+            app.ActiveUIDocument?.Document is { } doc ? ModelReader.Read(doc) : null).ConfigureAwait(false);
+
+        if (snapshot is null)
+        {
+            Log(LogKind.Warn, "log.no_document");
+            return;
+        }
+
+        LastSnapshot = snapshot;
+        Changed();
+
+        var circuits = await _api.FetchCircuitsAsync(projectId, job.CircuitIds().ToList()).ConfigureAwait(false);
+
+        var validation = PlanValidator.Validate(circuits, snapshot);
+        foreach (var problem in validation.Problems)
+        {
+            Log(LogKind.Warn, "log.job_error", problem.MessageKey);
+        }
+
+        if (validation.Accepted.Count == 0)
+        {
+            await FailJobAsync(job, validation).ConfigureAwait(false);
+            return;
+        }
+
+        Log(LogKind.Info, "log.job_found", validation.Accepted.Count);
+
+        var options = new ApplyOptions { PlaceTags = _settings.PlaceTags };
+        var results = await _queue.PostAsync<IReadOnlyList<CircuitApplyResult>?>(app =>
+            app.ActiveUIDocument?.Document is { } doc
+                ? CircuitApplier.Apply(doc, validation.Accepted, options)
+                : null).ConfigureAwait(false);
+
+        if (results is null)
+        {
+            Log(LogKind.Warn, "log.no_document");
+            return;
+        }
+
+        await WriteBackAsync(projectId, job, validation, results, snapshot).ConfigureAwait(false);
+    }
+
+    private async Task WriteBackAsync(Guid projectId, SyncJobRow job, PlanValidation validation,
+        IReadOnlyList<CircuitApplyResult> results, ModelSnapshot snapshot)
+    {
+        var devices = new List<DeviceConnection>();
 
         foreach (var result in results)
         {
@@ -347,16 +493,17 @@ public sealed class SyncController : IDisposable
                 result.Ok ? CircuitStatus.Applied : CircuitStatus.Failed,
                 result.CircuitNumber,
                 result.RevitUniqueId,
-                result.Ok ? result.ErrorDetail : result.ErrorKey).ConfigureAwait(false);
+                result.Ok ? result.ErrorDetail : Explain(result)).ConfigureAwait(false);
 
             if (result.Ok)
             {
                 devices.AddRange(result.UpdatedDevices);
-                Log(LogKind.Ok, "log.applied_one", result.CircuitNumber ?? "—", result.UpdatedDevices.Count);
+                Log(LogKind.Ok, result.Rebuilt ? "log.rebuilt_one" : "log.applied_one",
+                    result.CircuitNumber ?? "—", result.UpdatedDevices.Count);
             }
             else
             {
-                Log(LogKind.Error, "log.apply_failed", result.ErrorKey ?? "");
+                Log(LogKind.Error, "log.apply_failed", result.ErrorDetail ?? result.ErrorKey ?? "");
             }
         }
 
@@ -366,11 +513,22 @@ public sealed class SyncController : IDisposable
                 FirstProblem(validation, rejected.Id)).ConfigureAwait(false);
         }
 
+        // Device yang dikeluarkan dari circuit saat isinya diubah harus kembali merah di
+        // web. Tanpa ini device bekas anggota tetap tampak hijau padahal di model sudah
+        // tidak tersambung ke mana pun.
+        //
+        // Yang sudah masuk circuit lain di job yang sama dikecualikan: satu device bisa
+        // dilepas dari circuit A dan dipakai circuit B sekaligus, dan menulis "unwired"
+        // setelah "connected" akan mengembalikannya jadi merah padahal baru tersambung.
+        var connected = devices.Select(d => d.RevitUniqueId).ToHashSet(StringComparer.Ordinal);
+        devices.AddRange(ReleasedDevices(validation, snapshot, results)
+            .Where(released => !connected.Contains(released.RevitUniqueId)));
+
         if (devices.Count > 0)
         {
             // Status device disegarkan dari model, bukan dari asumsi: nomor circuit
             // yang ditulis di sini berasal dari ElectricalSystem.CircuitNumber.
-            await _api.UpdateDevicesAsync(projectId, devices).ConfigureAwait(false);
+            await _api.UpdateDeviceConnectionsAsync(projectId, devices).ConfigureAwait(false);
         }
 
         var applied = results.Count(r => r.Ok);
@@ -385,7 +543,7 @@ public sealed class SyncController : IDisposable
         }
     }
 
-    private async Task FailJobAsync(Guid projectId, SyncJobRow job, PlanValidation validation)
+    private async Task FailJobAsync(SyncJobRow job, PlanValidation validation)
     {
         foreach (var rejected in RejectedCircuits(validation))
         {
@@ -394,7 +552,79 @@ public sealed class SyncController : IDisposable
         }
 
         await _api.MarkJobFailedAsync(job.Id, "plan_rejected").ConfigureAwait(false);
-        _ = projectId;
+    }
+
+    /// <summary>
+    /// Device yang tadinya anggota circuit yang baru saja dibangun ulang, tapi tidak ikut
+    /// di isi barunya. Keanggotaan lama dibaca dari snapshot sebelum apply — bukan dari
+    /// Revit setelahnya, karena circuit lamanya sudah tidak ada.
+    /// </summary>
+    /// <summary>
+    /// Menyebut kolom yang dibuang karena database belum mengenalnya.
+    /// </summary>
+    /// <remarks>
+    /// Tarikan modelnya berhasil — itu sebabnya barisnya peringatan, bukan kesalahan.
+    /// Tapi fitur yang bergantung pada kolom itu tidak akan jalan di web, dan tanpa baris
+    /// ini satu-satunya gejalanya adalah layar yang isinya kurang tanpa sebab yang
+    /// terlihat. Disebutkan sekali per kolom, bukan sekali per permintaan.
+    /// </remarks>
+    private void WarnAboutMissingColumns()
+    {
+        var missing = _api.Client.MissingColumns;
+        if (missing.Count > 0)
+        {
+            Log(LogKind.Warn, "log.missing_columns", string.Join(", ", missing));
+        }
+    }
+
+    private static IEnumerable<DeviceConnection> ReleasedDevices(PlanValidation validation, ModelSnapshot snapshot,
+        IReadOnlyList<CircuitApplyResult> results)
+    {
+        var applied = results.Where(r => r.Ok).Select(r => r.CircuitId).ToHashSet();
+
+        foreach (var circuit in validation.Accepted)
+        {
+            if (string.IsNullOrEmpty(circuit.RevitUniqueId) || !applied.Contains(circuit.Id))
+            {
+                continue;
+            }
+
+            var kept = circuit.DeviceUniqueIds.ToHashSet(StringComparer.Ordinal);
+
+            foreach (var (deviceId, systemId) in snapshot.DeviceSystems)
+            {
+                if (string.Equals(systemId, circuit.RevitUniqueId, StringComparison.Ordinal) &&
+                    !kept.Contains(deviceId))
+                {
+                    yield return new DeviceConnection
+                    {
+                        RevitUniqueId = deviceId,
+                        Status = DeviceStatus.Unwired,
+                        CircuitNumber = null,
+                        // Null ikut ditulis, dan di sini itu justru gunanya: device yang
+                        // dilepas harus kehilangan panelnya juga, bukan tetap terhitung
+                        // sebagai isi panel yang sudah tidak memuatnya.
+                        PanelUniqueId = null,
+                    };
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Isi kolom <c>circuits.error</c> saat sebuah circuit gagal: kunci pesan di baris
+    /// pertama, penjelasan mentah dari Revit di baris berikutnya.
+    /// </summary>
+    /// <remarks>
+    /// Kunci saja tidak cukup. "Ditolak Revit" benar tapi tidak berguna — yang
+    /// membedakan panel penuh dari tegangan yang tidak cocok hanya ada di pesan Revit,
+    /// dan dulu pesan itu ditangkap lalu dibuang. Dipisah baris supaya web tetap bisa
+    /// menerjemahkan barisan pertamanya, dan menampilkan sisanya apa adanya.
+    /// </remarks>
+    private static string Explain(CircuitApplyResult result)
+    {
+        var key = result.ErrorKey ?? "";
+        return string.IsNullOrWhiteSpace(result.ErrorDetail) ? key : $"{key}\n{result.ErrorDetail}";
     }
 
     private static IEnumerable<CircuitRow> RejectedCircuits(PlanValidation validation) =>
@@ -408,6 +638,13 @@ public sealed class SyncController : IDisposable
         validation.Problems.First(p => p.CircuitId == circuitId).MessageKey;
 
     // ---------------------------------------------------------------- plumbing
+
+    /// <summary>
+    /// Versi <see cref="TryContext"/> yang hanya mengembalikan project id, untuk alur
+    /// yang membaca dokumennya sendiri di tiap lompatan ke thread Revit.
+    /// </summary>
+    private Guid? BoundProjectId(UIApplication app, bool quiet) =>
+        TryContext(app, out _, out var projectId, quiet) ? projectId : null;
 
     private bool TryContext(UIApplication app, out Document doc, out Guid projectId, bool quiet = false)
     {
@@ -470,6 +707,14 @@ public sealed class SyncController : IDisposable
             {
                 LogCloud(ex);
             }
+            catch (Exception ex)
+            {
+                // Pekerjaan di thread Revit sekarang dilempar balik ke sini lewat
+                // RevitTaskQueue.PostAsync, bukan ditelan RevitTaskQueue.OnError. Tanpa
+                // jaring ini kegagalannya jadi exception yang tidak pernah diamati:
+                // job berikutnya tidak jalan, dan log tetap kosong.
+                Log(LogKind.Error, "log.apply_failed", ex.Message);
+            }
             finally
             {
                 scope.Dispose();
@@ -493,7 +738,7 @@ public sealed class SyncController : IDisposable
     }
 
     private void LogCloud(CloudException ex) =>
-        Log(LogKind.Error, ex.Message is "network" or "timeout" ? "log.network" : "log.job_error", ex.Message);
+        Log(LogKind.Error, ex.Message is "network" or "timeout" ? "log.network" : "log.job_error", ex.Describe());
 
     private void Log(LogKind kind, string key, params object?[] args)
     {

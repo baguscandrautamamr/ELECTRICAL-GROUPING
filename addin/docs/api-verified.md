@@ -49,6 +49,27 @@ ini benar untuk versi Revit yang tercantum.
 **Tidak ada** `ElectricalSystem.BaseEquipment` di 2025 — kelayakan panel dibaca dari
 `PanelName`, bukan dari properti itu.
 
+Konsekuensinya untuk kolom `devices.panel_unique_id`: satu-satunya jembatan dari
+circuit ke baris panel adalah **namanya**, dicocokkan terhadap
+`RBS_ELEC_PANEL_NAME` panel yang sudah dibaca di dokumen yang sama. Tidak ada
+anggota API yang memberi elemen panelnya langsung. Nama yang muncul dua kali
+dipetakan ke null, bukan ditebak — lihat `ModelReader.PanelIdsByName`.
+
+### Mengubah circuit yang sudah ada
+
+Circuit yang isinya diubah dari web dibongkar lalu dibuat ulang — bukan ditambal.
+
+| Anggota | Catatan |
+| --- | --- |
+| `Document.Delete(ElementId)` | Membongkar `ElectricalSystem` lama sebelum dibuat ulang. Mengembalikan `ICollection<ElementId>`; hasilnya tidak dipakai. |
+
+Alasan memilih bongkar-pasang: `ElectricalSystem.AddToCircuit` / `RemoveFromCircuit`
+akan mempertahankan nomor circuit, tapi keduanya **belum diverifikasi** terhadap
+reference assembly 2025 dan tidak dipakai di repo ini. Konsekuensi yang diterima:
+nomor hasil pembangunan ulang bisa berbeda, karena `SelectPanel` memilih slot kosong
+sendiri. Kalau nomor yang tetap ternyata penting, verifikasi dua anggota itu dulu
+lewat `tools/ApiProbe` sebelum menggantinya.
+
 ## Parameter
 
 | `BuiltInParameter` | Dipakai untuk |
@@ -61,6 +82,7 @@ ini benar untuk versi Revit yang tercantum.
 | `RBS_ELEC_PANEL_NUMPHASES_PARAM` | `panel.phase` |
 | `RBS_ELEC_MAX_POLE_BREAKERS` | `panel.slots_total`, hidup di **type** panel |
 | `RBS_ELEC_CIRCUIT_NUMBER` | Parameter yang dibaca family tag |
+| `SCHEDULE_LEVEL_PARAM` | Level family berbasis face, yang tidak punya `LevelId` sendiri |
 
 ## Kategori
 
@@ -88,6 +110,27 @@ ini benar untuk versi Revit yang tercantum.
 dengan `CircuitSync.addin`. Kalau keduanya tidak cocok, penulisan ditolak saat jalan —
 bukan saat compile.
 
+## View denah
+
+Dipakai untuk membaca layout kerja — lihat `ModelReader.ReadLayouts`.
+
+| Anggota | Catatan |
+| --- | --- |
+| `ViewPlan` | Di-collect lewat `OfClass(typeof(ViewPlan))`. Mencakup floor plan dan ceiling plan. |
+| `View.IsTemplate` | View template ikut ter-collect dan harus dibuang. |
+| `ViewPlan.GenLevel` | `Level`, bisa `null` untuk denah yang tidak terikat level. |
+| `View.Scale` | `int`, penyebut skala: 1:100 → `100`. |
+| `View.CropBoxActive` | `bool`. False berarti crop tidak dipakai; `CropBox` tetap punya nilai tapi tidak berarti. |
+| `View.CropBox` | `BoundingBoxXYZ`. |
+| `BoundingBoxXYZ.Min` / `.Max` / `.Transform` | Min dan Max ada di koordinat kotak, bukan koordinat model. |
+| `Transform.OfPoint(XYZ)` | Memindahkan titik crop ke koordinat model. Tanpa ini denah yang diputar meleset. |
+| `FilteredElementCollector(Document, ElementId viewId)` | Overload yang menyaring persis seperti yang terlihat di view: filter view, visibility kategori, crop region, fase. Dasar isi `layout_devices`. |
+
+Overload per-view itu yang membedakan denah lighting dari denah emergency/exit di
+lantai yang sama. Melempar `Autodesk.Revit.Exceptions.ArgumentException` untuk view
+yang tidak mendukung pengumpulan; ditangani sebagai "isinya tidak diketahui", bukan
+sebagai kegagalan tarikan model.
+
 ## Satuan
 
 | Anggota | Catatan |
@@ -108,6 +151,12 @@ bukan saat compile.
 | `FamilyInstance.Room` | Bisa melempar kalau family tidak punya Room Calculation Point. |
 | `FamilyInstance.Host` | Fallback level untuk fixture yang di-host ceiling. |
 | `LocationPoint.Point` | Koordinat device. |
+| `LocationCurve.Curve` + `Curve.Evaluate(double, bool)` | Fixture berbasis garis tidak punya `LocationPoint`; titik tengahnya diambil di parameter 0,5 ternormalisasi. |
+| `Element.get_BoundingBox(View)` | Dipanggil dengan `null` = kotak di koordinat model. Jaring terakhir untuk device tanpa location. |
+| `XYZ.Add(XYZ)`, `XYZ.Multiply(double)` | Dipakai menghitung pusat bounding box. Metode eksplisit, bukan operator. |
+
+Ketiganya ada supaya device tanpa `LocationPoint` tidak jatuh ke titik 0,0 — di web
+hasilnya setumpuk simbol yang saling menindih di pojok denah.
 
 ## Transaksi
 
@@ -130,3 +179,10 @@ bukan saat compile.
 | `UIApplication.MainWindowHandle` | Owner window WPF supaya panel tidak tenggelam di belakang Revit. |
 | `UIApplication.Application.VersionNumber` | Ditampilkan di subtitle panel. |
 | `UIApplication.ActiveUIDocument` | Bisa `null` kalau tidak ada dokumen terbuka. |
+| `UIControlledApplication.ControlledApplication` | Jalan masuk ke event tingkat aplikasi. |
+| `ControlledApplication.DocumentChanged` (event) | Dipakai menandai model berubah supaya tarikan berikutnya terkirim sendiri. |
+| `DocumentChangedEventArgs.GetDocument()` / `GetAddedElementIds()` / `GetModifiedElementIds()` / `GetDeletedElementIds()` | `Autodesk.Revit.DB.Events`. Id yang dihapus tidak bisa di-resolve — elemennya sudah tidak ada. |
+
+`DocumentChanged` berjalan pada **setiap** transaksi Revit, termasuk milik add-in lain.
+Handler-nya harus murah dan tidak boleh melempar: exception dari sana muncul sebagai
+dialog error Revit di tengah pekerjaan user.

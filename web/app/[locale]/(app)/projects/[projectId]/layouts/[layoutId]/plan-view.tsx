@@ -1,20 +1,34 @@
 'use client';
 
-import {Send, Trash2, Zap} from 'lucide-react';
+import {Check, Pencil, Send, Trash2, X, Zap} from 'lucide-react';
 import {useTranslations} from 'next-intl';
 import {useRouter} from 'next/navigation';
 import {useMemo, useState, useTransition} from 'react';
+import {AutoRefresh} from '@/components/auto-refresh';
+import {ConnectedDevices} from '@/components/plan/connected-devices';
 import {Legend} from '@/components/plan/legend';
 import {PlanCanvas} from '@/components/plan/plan-canvas';
+import {SystemBrowser} from '@/components/plan/system-browser';
+import {WiringPanel} from '@/components/plan/wiring-panel';
 import {Badge, Button, Card, CardHeader, Empty, Notice, Select, cx} from '@/components/ui';
-import type {Circuit, Device, DeviceKind, Panel} from '@/lib/contract';
-import {createCircuit, queueApply, removeCircuit} from './actions';
+import type {Circuit, Device, DeviceKind, Layout, Panel} from '@/lib/contract';
+import {DEFAULT_WIRING_OPTIONS, planWiring, type WiringOptions} from '@/lib/wiring';
+import {createCircuit, queueApply, removeCircuit, updateCircuit} from './actions';
+
+/**
+ * Jeda penyegaran, dalam detik. Yang cepat hanya berlaku selagi menunggu Revit
+ * mengerjakan antrean — di situ user memang menatap layar menunggu sesuatu berubah.
+ * Sisanya lambat: kembalinya fokus tab yang menanggung penyegaran sehari-hari.
+ */
+const WAITING_SECONDS = 5;
+const IDLE_SECONDS = 60;
 
 type Feedback = {tone: 'ok' | 'danger'; text: string} | null;
 
 export function PlanView({
   projectId,
   kind,
+  layout,
   devices,
   panels,
   circuits,
@@ -22,6 +36,7 @@ export function PlanView({
 }: {
   projectId: string;
   kind: DeviceKind;
+  layout: Layout;
   devices: Device[];
   panels: Panel[];
   circuits: Circuit[];
@@ -34,19 +49,46 @@ export function PlanView({
   const router = useRouter();
 
   /**
-   * Add-in menulis kunci pesan ke `circuits.error`, bukan teks. Kunci yang tidak
-   * dikenal ditampilkan sebagai pesan umum — bukan kunci mentah, yang tidak berarti
-   * apa pun bagi engineer yang membacanya.
+   * Add-in menulis kunci pesan ke baris pertama `circuits.error`, dan penjelasan
+   * mentah dari Revit di baris berikutnya.
+   *
+   * Kunci yang tidak dikenal ditampilkan sebagai pesan umum — bukan kunci mentah,
+   * yang tidak berarti apa pun bagi engineer yang membacanya. Tapi penjelasan
+   * Revit-nya ikut ditampilkan apa adanya: "ditolak Revit" saja benar dan tidak
+   * berguna, sedangkan kalimat Revit-lah yang membedakan panel penuh dari tegangan
+   * yang tidak cocok.
    */
-  function explainRevit(key: string): string {
-    return revitErrors.has(key) ? revitErrors(key) : errors('unknown');
+  function explainRevit(raw: string): {text: string; detail: string | null} {
+    const [key = '', ...rest] = raw.split('\n');
+    const detail = rest.join(' ').trim();
+
+    return {
+      text: revitErrors.has(key) ? revitErrors(key) : errors('unknown'),
+      detail: detail.length > 0 ? detail : null
+    };
   }
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [hovered, setHovered] = useState<string | null>(null);
+  /** Sorotan yang datang dari daftar di bawah denah dan dari System Browser. */
+  const [pinned, setPinned] = useState<ReadonlySet<string> | null>(null);
   const [panelId, setPanelId] = useState('');
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pending, startTransition] = useTransition();
+  /** Id circuit yang sedang diubah. Null berarti kartu samping sedang membuat yang baru. */
+  const [editing, setEditing] = useState<string | null>(null);
+
+  /**
+   * Wiring berdiri sendiri: state-nya tidak bersinggungan dengan seleksi, circuit,
+   * maupun panel di atas. Tertutup secara bawaan, dan selagi tertutup rencananya
+   * tidak dihitung sama sekali.
+   */
+  const [wiringOpen, setWiringOpen] = useState(false);
+  const [wiringOptions, setWiringOptions] = useState<WiringOptions>(DEFAULT_WIRING_OPTIONS);
+  const wiringPlan = useMemo(
+    () => (wiringOpen ? planWiring(devices, wiringOptions) : null),
+    [wiringOpen, devices, wiringOptions]
+  );
 
   const usablePanels = useMemo(() => panels.filter((panel) => panel.is_usable), [panels]);
   const byId = useMemo(
@@ -71,10 +113,21 @@ export function PlanView({
   }, [selected, byId]);
 
   const drafts = circuits.filter((circuit) => circuit.status === 'draft' || circuit.status === 'failed');
+
+  /**
+   * Add-in menulis hasilnya langsung ke database, jadi halaman ini hanya perlu melihat
+   * lagi — tanpa itu titik yang sudah tersambung baru berubah hijau setelah user menekan
+   * muat ulang sendiri, dan tampak seolah pengirimannya gagal.
+   *
+   * Selagi menunggu Revit, penyegarannya dipercepat: di situlah user benar-benar
+   * menatap layar menunggu sesuatu berubah.
+   */
+  const waitingForRevit = circuits.some((circuit) => circuit.status === 'queued');
   const highlighted = useMemo(() => {
+    if (pinned) return pinned;
     const circuit = circuits.find((candidate) => candidate.id === hovered);
     return new Set(circuit?.device_unique_ids ?? []);
-  }, [hovered, circuits]);
+  }, [pinned, hovered, circuits]);
 
   function select(ids: string[], mode: 'replace' | 'toggle' | 'add') {
     setSelected((current) => {
@@ -89,12 +142,13 @@ export function PlanView({
     });
   }
 
-  function act(work: () => Promise<{ok: boolean; reason?: string}>, done: string) {
+  function act(work: () => Promise<{ok: boolean; reason?: string}>, done: string, onDone?: () => void) {
     startTransition(async () => {
       const result = await work();
 
       if (result.ok) {
         setFeedback({tone: 'ok', text: done});
+        onDone?.();
         router.refresh();
         return;
       }
@@ -111,8 +165,31 @@ export function PlanView({
     });
   }
 
+  /**
+   * Mengubah circuit memakai alat yang sama dengan membuatnya: isi circuit masuk ke
+   * pilihan di denah, lalu user menambah atau mengurangi titik seperti biasa.
+   */
+  function startEdit(circuit: Circuit) {
+    setEditing(circuit.id);
+    setSelected(new Set(circuit.device_unique_ids));
+    setPanelId(circuit.panel_unique_id);
+    setPinned(new Set(circuit.device_unique_ids));
+    setFeedback(null);
+  }
+
+  function stopEdit() {
+    setEditing(null);
+    setSelected(new Set());
+    setPanelId('');
+    setPinned(null);
+  }
+
+  const edited = editing === null ? null : circuits.find((circuit) => circuit.id === editing);
+
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_22rem]">
+      <AutoRefresh seconds={waitingForRevit ? WAITING_SECONDS : IDLE_SECONDS} />
+
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-[13px] font-semibold">{t('selected', {count: selected.size})}</p>
@@ -144,20 +221,36 @@ export function PlanView({
 
         <PlanCanvas
           devices={devices}
-          circuits={circuits}
           selected={selected}
           onSelect={select}
           symbolOverrides={symbolOverrides}
           highlighted={highlighted}
-          activeCircuitId={hovered}
+          wiring={wiringPlan?.runs}
+          crop={layout}
         />
 
         <p className="text-[12px] text-muted">{t('hint')}</p>
+
+        <ConnectedDevices
+          devices={devices}
+          circuits={circuits}
+          panels={panels}
+          onHighlight={(ids) => setPinned(ids.length > 0 ? new Set(ids) : null)}
+        />
       </div>
 
       <div className="space-y-5">
         <Card>
-          <CardHeader title={c('heading')} />
+          <CardHeader
+            title={edited ? c('editHeading') : c('heading')}
+            hint={
+              edited
+                ? c('editHint', {
+                    number: edited.circuit_number ?? c('numberPending')
+                  })
+                : undefined
+            }
+          />
 
           {usablePanels.length === 0 ? (
             <Notice tone="warn">{c('noUsablePanel')}</Notice>
@@ -169,29 +262,61 @@ export function PlanView({
                   <option key={panel.revit_unique_id} value={panel.revit_unique_id}>
                     {panel.name}
                     {panel.prefix ? ` · ${panel.prefix}` : ''}
+                    {/* Slot ikut disebut: panel yang hampir penuh adalah sebab
+                        penolakan yang paling sering, dan paling mudah dihindari
+                        kalau angkanya terlihat sebelum memilih. */}
+                    {panel.slots_total ? ` · ${panel.slots_used ?? 0}/${panel.slots_total}` : ''}
                   </option>
                 ))}
               </Select>
 
-              <Button
-                tone="primary"
-                disabled={pending}
-                onClick={() =>
-                  act(
-                    () =>
-                      createCircuit({
-                        projectId,
-                        panelUniqueId: panelId,
-                        kind,
-                        deviceUniqueIds: [...selected]
-                      }),
-                    c('created')
-                  )
-                }
-              >
-                <Zap className="size-4" aria-hidden />
-                {c('create')}
-              </Button>
+              {edited ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    tone="primary"
+                    disabled={pending}
+                    onClick={() =>
+                      act(
+                        () =>
+                          updateCircuit({
+                            circuitId: edited.id,
+                            panelUniqueId: panelId,
+                            deviceUniqueIds: [...selected]
+                          }),
+                        c('updated'),
+                        stopEdit
+                      )
+                    }
+                  >
+                    <Check className="size-4" aria-hidden />
+                    {c('saveEdit')}
+                  </Button>
+                  <Button tone="quiet" disabled={pending} onClick={stopEdit}>
+                    <X className="size-4" aria-hidden />
+                    {c('cancelEdit')}
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  tone="primary"
+                  disabled={pending}
+                  onClick={() =>
+                    act(
+                      () =>
+                        createCircuit({
+                          projectId,
+                          panelUniqueId: panelId,
+                          kind,
+                          deviceUniqueIds: [...selected]
+                        }),
+                      c('created')
+                    )
+                  }
+                >
+                  <Zap className="size-4" aria-hidden />
+                  {c('create')}
+                </Button>
+              )}
             </div>
           )}
 
@@ -218,7 +343,7 @@ export function PlanView({
                   }
                 >
                   <Send className="size-4" aria-hidden />
-                  {c('send')}
+                  {c('sendCount', {count: drafts.length})}
                 </Button>
               ) : undefined
             }
@@ -227,7 +352,12 @@ export function PlanView({
           {circuits.length === 0 ? (
             <Empty title={c('emptyTitle')} body={c('emptyBody')} />
           ) : (
-            <ul className="divide-y divide-hairline">
+            /**
+             * Daftar circuit tumbuh seiring pekerjaan dan bisa mencapai puluhan baris.
+             * Dibatasi tingginya supaya kartu di bawahnya tetap terjangkau tanpa harus
+             * menggulung seluruh halaman.
+             */
+            <ul className="max-h-[28rem] divide-y divide-hairline overflow-y-auto pr-1">
               {circuits.map((circuit) => {
                 const panel = panels.find((candidate) => candidate.revit_unique_id === circuit.panel_unique_id);
                 const va = circuit.device_unique_ids.reduce(
@@ -242,7 +372,8 @@ export function PlanView({
                     onMouseLeave={() => setHovered(null)}
                     className={cx(
                       'flex items-start gap-3 py-3 transition-colors duration-200 first:pt-0 last:pb-0',
-                      hovered === circuit.id && 'bg-sunken'
+                      hovered === circuit.id && 'bg-sunken',
+                      editing === circuit.id && 'bg-accent/10'
                     )}
                   >
                     <div className="min-w-0 flex-1">
@@ -257,9 +388,16 @@ export function PlanView({
                         {c('load', {va: Math.round(va)})}
                       </p>
                       {circuit.error ? (
-                        <p className="mt-1 text-[12px] text-danger">
-                          {c('errorPrefix')}: {explainRevit(circuit.error)}
-                        </p>
+                        <>
+                          <p className="mt-1 text-[12px] text-danger">
+                            {c('errorPrefix')}: {explainRevit(circuit.error).text}
+                          </p>
+                          {explainRevit(circuit.error).detail ? (
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
+                              {explainRevit(circuit.error).detail}
+                            </p>
+                          ) : null}
+                        </>
                       ) : null}
                       {circuit.status === 'queued' ? (
                         <p className="mt-1 text-[12px] text-muted">{c('queuedNote')}</p>
@@ -281,6 +419,20 @@ export function PlanView({
                         {c(circuit.status)}
                       </Badge>
 
+                      {/* Circuit yang sedang dikerjakan add-in tidak boleh diubah di tengah jalan. */}
+                      {circuit.status === 'queued' ? null : (
+                        <Button
+                          tone="quiet"
+                          aria-label={c('edit')}
+                          title={c('edit')}
+                          disabled={pending}
+                          className="px-2"
+                          onClick={() => startEdit(circuit)}
+                        >
+                          <Pencil className="size-4" aria-hidden />
+                        </Button>
+                      )}
+
                       {circuit.status === 'draft' || circuit.status === 'failed' ? (
                         <Button
                           tone="danger"
@@ -301,8 +453,23 @@ export function PlanView({
           )}
         </Card>
 
+        <SystemBrowser
+          devices={devices}
+          circuits={circuits}
+          panels={panels}
+          onHighlight={(ids) => setPinned(ids.length > 0 ? new Set(ids) : null)}
+        />
+
+        <WiringPanel
+          open={wiringOpen}
+          onToggle={() => setWiringOpen((current) => !current)}
+          options={wiringOptions}
+          onOptionsChange={setWiringOptions}
+          plan={wiringPlan}
+        />
+
         <Card>
-          <Legend familyKeys={familyKeys} circuits={circuits} />
+          <Legend familyKeys={familyKeys} />
         </Card>
       </div>
     </div>

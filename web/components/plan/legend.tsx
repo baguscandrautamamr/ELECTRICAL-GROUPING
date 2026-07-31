@@ -1,27 +1,8 @@
 'use client';
 
 import {useTranslations} from 'next-intl';
-import {DEVICE_STATUSES, splitFamilyKey, type Circuit, type DeviceStatus} from '@/lib/contract';
-import {seriesFor} from '@/lib/routing';
+import {DEVICE_STATUSES, splitFamilyKey, type DeviceStatus} from '@/lib/contract';
 import {STATUS_STYLE, geometryFor, symbolFor} from '@/lib/symbols';
-
-/** Potongan garis circuit, memakai warna dan pola yang sama dengan di denah. */
-function LineSwatch({index}: {index: number}) {
-  const series = seriesFor(index);
-
-  return (
-    <svg viewBox="0 -6 40 12" className="mt-1 h-3 w-10 shrink-0" aria-hidden>
-      <path
-        d="M 0 0 L 40 0"
-        fill="none"
-        stroke={series.color}
-        strokeWidth={3}
-        strokeLinecap="round"
-        strokeDasharray={series.dash ? series.dash.map((part) => part * 3).join(' ') : undefined}
-      />
-    </svg>
-  );
-}
 
 /** Contoh satu simbol, dipakai di keterangan supaya bentuk dan garisnya bisa dibandingkan. */
 function Swatch({status, familyKey}: {status: DeviceStatus; familyKey: string}) {
@@ -53,31 +34,12 @@ function Swatch({status, familyKey}: {status: DeviceStatus; familyKey: string}) 
   );
 }
 
-export function Legend({familyKeys, circuits}: {familyKeys: string[]; circuits: Circuit[]}) {
+export function Legend({familyKeys}: {familyKeys: string[]}) {
   const t = useTranslations('status');
   const plan = useTranslations('plan');
 
   return (
     <div className="space-y-4">
-      {circuits.length > 0 ? (
-        <div>
-          <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">
-            {plan('seriesTitle')}
-          </p>
-          <ul className="space-y-2">
-            {circuits.map((circuit, index) => (
-              <li key={circuit.id} className="flex items-start gap-2.5">
-                <LineSwatch index={index} />
-                <p className="min-w-0 truncate text-[13px] font-semibold">
-                  {circuit.circuit_number ?? plan('series', {number: index + 1})}
-                </p>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-[12px] leading-snug text-muted">{plan('seriesHint')}</p>
-        </div>
-      ) : null}
-
       <div>
         <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">{plan('legend')}</p>
         <ul className="space-y-2">

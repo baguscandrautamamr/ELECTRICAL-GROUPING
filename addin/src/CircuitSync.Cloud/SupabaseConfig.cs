@@ -17,8 +17,12 @@ public sealed record SupabaseConfig
 
     public required string AnonKey { get; init; }
 
-    /// <summary>Dipakai tombol "Buka web app".</summary>
-    public string WebUrl { get; init; } = "https://circuitsync.vercel.app";
+    /// <summary>
+    /// Dipakai tombol "Buka web app". Nilai bawaan ini domain production yang
+    /// dicatat integrasi Vercel di repo; kalau domainnya berganti, timpa lewat
+    /// <see cref="EnvWebUrl"/> atau <c>circuitsync.json</c> — tidak perlu build ulang.
+    /// </summary>
+    public string WebUrl { get; init; } = "https://revitgrouping.vercel.app";
 
     public static SupabaseConfig Default { get; } = new()
     {

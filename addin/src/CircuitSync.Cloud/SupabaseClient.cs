@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using CircuitSync.Core;
 
 namespace CircuitSync.Cloud;
@@ -25,6 +26,52 @@ public sealed class CloudException : Exception
     public string? Body { get; }
 
     public bool IsAuthFailure => Status is HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest;
+
+    /// <summary>
+    /// Baris untuk log aktivitas. Kode HTTP sendirian tidak menolong siapa pun:
+    /// "http_400" bisa berarti kolom tidak dikenal, constraint ditolak, atau payload
+    /// salah bentuk. PostgREST menaruh sebab sebenarnya di body sebagai JSON,
+    /// jadi itu yang ikut ditampilkan.
+    /// </summary>
+    public string Describe()
+    {
+        var body = Body;
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return Message;
+        }
+
+        return $"{Message} — {ServerMessage(body) ?? body}";
+    }
+
+    private static string? ServerMessage(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            // PostgREST: {"code":"PGRST102","message":"All object keys must match",...}
+            // GoTrue memakai "error_description" atau "msg" untuk hal yang sama.
+            foreach (var name in new[] { "message", "error_description", "msg", "error" })
+            {
+                if (document.RootElement.TryGetProperty(name, out var value) &&
+                    value.ValueKind == JsonValueKind.String)
+                {
+                    return value.GetString();
+                }
+            }
+
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>
@@ -165,39 +212,21 @@ public sealed class SupabaseClient : IDisposable
         }
 
         var path = $"rest/v1/{table}?on_conflict={Uri.EscapeDataString(onConflict)}";
-        using var request = new HttpRequestMessage(HttpMethod.Post, path)
-        {
-            Content = Body(rows),
-        };
-        request.Headers.TryAddWithoutValidation("Prefer", "resolution=merge-duplicates,return=minimal");
-
-        using var response = await SendAuthorizedAsync(request, ct).ConfigureAwait(false);
-        await EnsureOkAsync(response, ct).ConfigureAwait(false);
+        using var response = await WriteAsync(HttpMethod.Post, path,
+            "resolution=merge-duplicates,return=minimal", rows, table, ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<T>> InsertAsync<T, TBody>(string table, TBody row, CancellationToken ct = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"rest/v1/{table}")
-        {
-            Content = Body(row),
-        };
-        request.Headers.TryAddWithoutValidation("Prefer", "return=representation");
-
-        using var response = await SendAuthorizedAsync(request, ct).ConfigureAwait(false);
-        await EnsureOkAsync(response, ct).ConfigureAwait(false);
+        using var response = await WriteAsync(HttpMethod.Post, $"rest/v1/{table}",
+            "return=representation", row, table, ct).ConfigureAwait(false);
         return await ReadAsync<List<T>>(response, ct).ConfigureAwait(false);
     }
 
     public async Task PatchAsync<TBody>(string table, string query, TBody patch, CancellationToken ct = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Patch, $"rest/v1/{table}?{query}")
-        {
-            Content = Body(patch),
-        };
-        request.Headers.TryAddWithoutValidation("Prefer", "return=minimal");
-
-        using var response = await SendAuthorizedAsync(request, ct).ConfigureAwait(false);
-        await EnsureOkAsync(response, ct).ConfigureAwait(false);
+        using var response = await WriteAsync(HttpMethod.Patch, $"rest/v1/{table}?{query}",
+            "return=minimal", patch, table, ct).ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(string table, string query, CancellationToken ct = default)
@@ -211,8 +240,77 @@ public sealed class SupabaseClient : IDisposable
 
     // ---------------------------------------------------------------- internals
 
-    private static StringContent Body<T>(T value) =>
-        new(JsonSerializer.Serialize(value, CircuitSyncJson.Options), Encoding.UTF8, "application/json");
+    /// <summary>Batas berapa kolom yang boleh dibuang sebelum menyerah.</summary>
+    /// <remarks>
+    /// Ada batasnya supaya database yang benar-benar salah bentuk — tabel dari project
+    /// lain, misalnya — berhenti sebagai kegagalan, bukan terkelupas kolom demi kolom
+    /// sampai yang terkirim tinggal kunci primernya.
+    /// </remarks>
+    private const int MaxDroppedColumns = 4;
+
+    /// <summary>
+    /// Kolom yang ditolak database karena belum dikenal, per tabel: <c>"devices.panel_unique_id"</c>.
+    /// </summary>
+    /// <remarks>
+    /// Dikumpulkan supaya UI bisa menyebutkannya. Membuang kolom diam-diam akan membuat
+    /// fitur yang bergantung padanya tidak jalan tanpa satu pun petunjuk kenapa —
+    /// tepat jenis kegagalan yang paling lama tidak ketahuan.
+    /// </remarks>
+    public IReadOnlyCollection<string> MissingColumns => _missingColumns;
+
+    private readonly HashSet<string> _missingColumns = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Permintaan bertubuh JSON yang tahan terhadap database yang tertinggal satu migrasi.
+    /// </summary>
+    /// <remarks>
+    /// Add-in dan database dipasang terpisah: ZIP add-in dipasang user, migrasi
+    /// ditembakkan lewat <c>supabase db push</c>. Selisih versi di antara keduanya bukan
+    /// kemungkinan, melainkan keadaan biasa — dan sebelum ini selisih itu menggagalkan
+    /// <b>seluruh</b> tarikan model dengan pesan PostgREST mentah, bukan hanya fitur yang
+    /// memang butuh kolom baru.
+    ///
+    /// Jadi kolom yang ditolak dibuang dari body lalu permintaannya diulang. Sisanya tetap
+    /// masuk. Begitu migrasinya diterapkan, payload penuh kembali terkirim dengan
+    /// sendirinya — tanpa memasang ulang add-in.
+    /// </remarks>
+    private async Task<HttpResponseMessage> WriteAsync<TBody>(HttpMethod method, string path, string prefer,
+        TBody payload, string table, CancellationToken ct)
+    {
+        var body = JsonSerializer.SerializeToNode(payload, CircuitSyncJson.Options);
+        var dropped = 0;
+
+        while (true)
+        {
+            using var request = new HttpRequestMessage(method, path)
+            {
+                Content = new StringContent(body?.ToJsonString() ?? "null", Encoding.UTF8, "application/json"),
+            };
+            request.Headers.TryAddWithoutValidation("Prefer", prefer);
+
+            var response = await SendAuthorizedAsync(request, ct).ConfigureAwait(false);
+            if (response.IsSuccessStatusCode)
+            {
+                return response;
+            }
+
+            CloudException failure;
+            using (response)
+            {
+                var raw = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                failure = new CloudException($"http_{(int)response.StatusCode}", response.StatusCode, Trim(raw));
+            }
+
+            var column = PostgrestSchema.UnknownColumn(failure.Body);
+            if (column is null || dropped >= MaxDroppedColumns || !PostgrestSchema.Strip(body, column))
+            {
+                throw failure;
+            }
+
+            _missingColumns.Add($"{table}.{column}");
+            dropped++;
+        }
+    }
 
     private async Task<HttpResponseMessage> SendAuthorizedAsync(HttpRequestMessage request, CancellationToken ct)
     {

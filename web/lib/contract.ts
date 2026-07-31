@@ -34,6 +34,40 @@ export type Level = {
   sort_order: number;
 };
 
+/**
+ * Cerminan satu view denah Revit, dan halaman kerja di web. Nama view sudah memuat
+ * lantai dan jenis sekaligus, jadi layout menggantikan pasangan (level, kind) —
+ * lihat `supabase/migrations/20260729000000_layouts.sql`.
+ */
+export type Layout = {
+  project_id: string;
+  revit_unique_id: string;
+  name: string;
+  kind: DeviceKind;
+  level_key: string;
+  /** Penyebut skala Revit: 1:100 disimpan sebagai 100. */
+  scale: number | null;
+  /** Crop region dalam milimeter model. Null berarti crop tidak aktif di Revit. */
+  crop_min_x_mm: number | null;
+  crop_min_y_mm: number | null;
+  crop_max_x_mm: number | null;
+  crop_max_y_mm: number | null;
+  sort_order: number;
+};
+
+/**
+ * Satu device yang tampak di satu layout.
+ *
+ * Isi sebuah denah ditentukan view Revit-nya — filter view, visibility kategori, crop
+ * region, fase — bukan pasangan (level, kind). Satu lantai bisa punya denah lighting
+ * dan denah emergency/exit sekaligus, dan keduanya berlantai serta berjenis sama.
+ */
+export type LayoutDevice = {
+  project_id: string;
+  layout_unique_id: string;
+  device_unique_id: string;
+};
+
 export type Device = {
   project_id: string;
   revit_unique_id: string;
@@ -46,6 +80,12 @@ export type Device = {
   va: number | null;
   status: DeviceStatus;
   circuit_number: string | null;
+  /**
+   * Panel pemuat device ini, dibaca add-in dari model. Null berarti belum tersambung
+   * ke panel mana pun — atau model terakhir ditarik add-in versi lama, dan isi panel
+   * jatuh ke circuit yang pernah diterapkan lewat web.
+   */
+  panel_unique_id: string | null;
 };
 
 export type Panel = {

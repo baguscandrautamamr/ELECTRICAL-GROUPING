@@ -75,6 +75,40 @@ async function checkSchema(): Promise<{state: State; detail: string; cause: 'mis
   }
 }
 
+/**
+ * Apakah migrasi **terbaru** sudah ikut ditembakkan, bukan sekadar yang pertama.
+ *
+ * `checkSchema` hanya menyentuh `projects`, jadi database yang berhenti di migrasi
+ * pertama tetap dilaporkan hijau — dan halaman lain yang memakai tabel lebih baru
+ * gagal tanpa penjelasan yang nyambung. Kekurangan ini bukan kegagalan: aplikasi
+ * tetap jalan, hanya kembali ke perilaku lama.
+ */
+async function checkLatestMigration(): Promise<{state: State; detail: string; missing: boolean}> {
+  try {
+    const supabase = await createClient();
+
+    // Diarahkan ke migrasi paling baru, bukan yang pernah paling baru. Kolom, bukan
+    // tabel: `panel_unique_id` yang datang belakangan, dan add-in mengirimnya di setiap
+    // tarikan model — kalau ia belum ada, itu yang paling dulu terasa.
+    const {error} = await supabase.from('devices').select('panel_unique_id').limit(1);
+
+    if (!error) return {state: 'ok', detail: 'devices.panel_unique_id', missing: false};
+
+    const missing = classifyError(error) === 'schema';
+    return {
+      state: missing ? 'unknown' : 'fail',
+      detail: missing ? (error.code ?? '42P01') : error.message,
+      missing
+    };
+  } catch (error) {
+    return {
+      state: 'fail',
+      detail: error instanceof Error ? error.message : 'query failed',
+      missing: false
+    };
+  }
+}
+
 export default async function SetupPage({params}: {params: Promise<{locale: string}>}) {
   const {locale} = await params;
   setRequestLocale(locale);
@@ -87,7 +121,11 @@ export default async function SetupPage({params}: {params: Promise<{locale: stri
   const scheme = head.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https');
   const origin = `${scheme}://${host}`;
 
-  const [auth, schema] = await Promise.all([checkAuth(), checkSchema()]);
+  const [auth, schema, latest] = await Promise.all([
+    checkAuth(),
+    checkSchema(),
+    checkLatestMigration()
+  ]);
 
   const rows: Array<{state: State; label: string; value: string; hint?: string}> = [
     {
@@ -115,6 +153,12 @@ export default async function SetupPage({params}: {params: Promise<{locale: stri
           : schema.cause === 'missing'
             ? t('schemaHint')
             : t('schemaBlockedHint')
+    },
+    {
+      state: latest.state,
+      label: t('latestMigration'),
+      value: latest.detail,
+      hint: latest.state === 'ok' ? undefined : latest.missing ? t('latestMigrationHint') : t('schemaBlockedHint')
     },
     {state: 'unknown', label: t('redirectUrl'), value: `${origin}/auth/callback`, hint: t('redirectHint')}
   ];

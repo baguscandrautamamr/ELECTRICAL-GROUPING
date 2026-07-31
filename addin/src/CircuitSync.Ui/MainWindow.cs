@@ -34,9 +34,11 @@ public sealed class MainWindow : Window
     private readonly PasswordBox _passwordField;
     private readonly TextBox _codeField;
     private readonly TextBox _newProjectField;
+    private readonly TextBox _webUrlField;
     private readonly ComboBox _projectPicker;
     private readonly ComboBox _intervalPicker;
     private readonly CheckBox _autoToggle;
+    private readonly CheckBox _pushToggle;
     private readonly CheckBox _tagToggle;
 
     private readonly TextBlock _accountValue;
@@ -139,10 +141,22 @@ public sealed class MainWindow : Window
         _autoToggle.Checked += (_, _) => ApplyPolling();
         _autoToggle.Unchecked += (_, _) => ApplyPolling();
 
+        _pushToggle = _ui.Toggle("action.auto_push");
+        _pushToggle.IsChecked = settings.AutoPush;
+        _pushToggle.Checked += (_, _) => _controller.SetAutoPush(true);
+        _pushToggle.Unchecked += (_, _) => _controller.SetAutoPush(false);
+
         _tagToggle = _ui.Toggle("action.place_tags");
         _tagToggle.IsChecked = settings.PlaceTags;
         _tagToggle.Checked += (_, _) => SaveTagToggle();
         _tagToggle.Unchecked += (_, _) => SaveTagToggle();
+
+        // Domain *.vercel.app mengikuti nama project di Vercel, jadi nilai bawaan yang
+        // ikut terkompilasi belum tentu cocok dengan deployment yang sebenarnya. Bisa
+        // diperbaiki di sini, tanpa build ulang add-in.
+        _webUrlField = _ui.Field();
+        _webUrlField.Text = settings.WebUrl ?? controller.Config.WebUrl;
+        _webUrlField.LostKeyboardFocus += (_, _) => SaveWebUrl();
 
         _intervalPicker = _ui.Picker();
         foreach (var seconds in new[] { 10, 20, 60, 180 })
@@ -161,9 +175,12 @@ public sealed class MainWindow : Window
             UiKit.Row(8,
                 _ui.Primary("action.push", (_, _) => _controller.PushSnapshot()),
                 _ui.Secondary("action.check", (_, _) => _controller.CheckJobs())),
+            _pushToggle,
             _autoToggle,
             _intervalPicker,
             _tagToggle,
+            _ui.Labeled("action.web_url", _webUrlField),
+            _ui.Muted("action.web_url_hint"),
             _ui.QuietKey("action.open_web", (_, _) => OpenWeb())));
 
         // ------------------------------------------------------------- log card
@@ -399,13 +416,48 @@ public sealed class MainWindow : Window
         _settings.Save();
     }
 
+    private void SaveWebUrl()
+    {
+        var typed = _webUrlField.Text.Trim();
+        _settings.WebUrl = typed.Length == 0 ? null : Normalize(typed);
+        _settings.Save();
+
+        // Kotaknya selalu memperlihatkan alamat yang benar-benar akan dibuka, termasuk
+        // saat dikosongkan dan jatuh kembali ke nilai bawaan.
+        _webUrlField.Text = _settings.WebUrl ?? _controller.Config.WebUrl;
+    }
+
+    /// <summary>Alamat yang ditempel dari bilah alamat browser sering tanpa skema.</summary>
+    private static string Normalize(string value)
+    {
+        var trimmed = value.TrimEnd('/');
+        return trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : $"https://{trimmed}";
+    }
+
+    /// <summary>
+    /// Halaman project yang terikat ke dokumen ini, bukan sekadar beranda: yang dicari
+    /// user setelah menarik model adalah denahnya, dan beranda memaksanya mencari sendiri.
+    /// </summary>
+    private string WebTarget()
+    {
+        var root = (_settings.WebUrl ?? _controller.Config.WebUrl).TrimEnd('/');
+        var locale = _settings.Language == CoreLanguage.En ? "en" : "id";
+
+        return _controller.ProjectId is { } projectId
+            ? $"{root}/{locale}/projects/{projectId}"
+            : $"{root}/{locale}/projects";
+    }
+
     private void OpenWeb()
     {
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = _controller.Config.WebUrl,
+                FileName = WebTarget(),
                 UseShellExecute = true,
             });
         }

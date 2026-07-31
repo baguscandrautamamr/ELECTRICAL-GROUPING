@@ -56,6 +56,10 @@ public sealed class CircuitSyncApi(SupabaseClient client)
             snapshot.Levels.Select(l => l with { ProjectId = projectId }).ToList(),
             "project_id,level_key", ct).ConfigureAwait(false);
 
+        await UpsertBatchedAsync("layouts",
+            snapshot.Layouts.Select(l => l with { ProjectId = projectId }).ToList(),
+            "project_id,revit_unique_id", ct).ConfigureAwait(false);
+
         await UpsertBatchedAsync("panels",
             snapshot.Panels.Select(p => p with { ProjectId = projectId }).ToList(),
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
@@ -64,8 +68,16 @@ public sealed class CircuitSyncApi(SupabaseClient client)
             snapshot.Devices.Select(d => d with { ProjectId = projectId }).ToList(),
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
 
+        // Setelah layouts dan devices: keduanya jadi tujuan foreign key baris ini.
+        await UpsertBatchedAsync("layout_devices",
+            snapshot.LayoutDevices.Select(m => m with { ProjectId = projectId }).ToList(),
+            "project_id,layout_unique_id,device_unique_id", ct).ConfigureAwait(false);
+
+        // Sapuan layout_devices ditaruh terakhir: menghapus layout atau device lebih
+        // dulu sudah membawa keanggotaannya lewat cascade, jadi yang tersisa di sini
+        // hanya keanggotaan yang hilang sementara kedua ujungnya masih ada.
         var cutoff = Uri.EscapeDataString(stamp.UtcDateTime.ToString("o", CultureInfo.InvariantCulture));
-        foreach (var table in new[] { "levels", "panels", "devices" })
+        foreach (var table in new[] { "levels", "layouts", "panels", "devices", "layout_devices" })
         {
             await Client.DeleteAsync(table, $"project_id=eq.{projectId}&updated_at=lt.{cutoff}", ct)
                 .ConfigureAwait(false);
@@ -150,13 +162,47 @@ public sealed class CircuitSyncApi(SupabaseClient client)
         }, ct);
 
     /// <summary>
-    /// Memperbarui status dan nomor circuit device setelah apply. Dipakai supaya web
-    /// tidak perlu menunggu snapshot penuh berikutnya untuk berubah warna.
+    /// Memperbarui status, nomor circuit, dan panel device setelah apply, supaya denah
+    /// di web berubah warna tanpa menunggu tarikan model berikutnya.
     /// </summary>
-    public Task UpdateDevicesAsync(Guid projectId, IReadOnlyList<DeviceRow> devices, CancellationToken ct = default) =>
-        UpsertBatchedAsync("devices",
-            devices.Select(d => d with { ProjectId = projectId }).ToList(),
-            "project_id,revit_unique_id", ct);
+    /// <remarks>
+    /// PATCH, bukan upsert. Upsert menulis <b>seluruh</b> kolom yang ada di body, dan
+    /// <see cref="DeviceConnection"/> tidak membawa geometri — memakainya sebagai upsert
+    /// akan mengosongkan <c>x_mm</c>, <c>y_mm</c>, dan <c>level_key</c> milik device yang
+    /// baru saja di-circuit. PATCH hanya menyentuh kolom yang memang berubah.
+    ///
+    /// Device dikelompokkan per (status, nomor, panel) supaya satu circuit = satu
+    /// request, bukan satu device = satu request. Panel ikut jadi kunci: tanpa itu dua
+    /// circuit bernomor sama di panel berbeda — hal biasa, karena nomor hanya unik di
+    /// dalam satu panel — akan digabung jadi satu PATCH dan salah satunya menulis panel
+    /// yang keliru.
+    /// </remarks>
+    public async Task UpdateDeviceConnectionsAsync(Guid projectId, IReadOnlyList<DeviceConnection> devices,
+        CancellationToken ct = default)
+    {
+        var groups = devices
+            .GroupBy(d => (d.Status, d.CircuitNumber, d.PanelUniqueId))
+            .Select(g => (g.Key.Status, g.Key.CircuitNumber, g.Key.PanelUniqueId,
+                Ids: g.Select(d => d.RevitUniqueId).Distinct().ToList()));
+
+        foreach (var (status, circuitNumber, panelUniqueId, ids) in groups)
+        {
+            foreach (var chunk in Chunk(ids, 100))
+            {
+                await Client.PatchAsync("devices",
+                    $"project_id=eq.{projectId}&revit_unique_id=in.({InList(chunk)})",
+                    new { status, circuit_number = circuitNumber, panel_unique_id = panelUniqueId },
+                    ct).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Daftar untuk operator <c>in.()</c> PostgREST. Tiap nilai dikutip supaya karakter
+    /// apa pun di dalam UniqueId tidak dibaca sebagai pemisah.
+    /// </summary>
+    private static string InList(IEnumerable<string> values) =>
+        string.Join(',', values.Select(v => Uri.EscapeDataString($"\"{v.Replace("\"", "\\\"")}\"")));
 
     // ---------------------------------------------------------------- helpers
 
