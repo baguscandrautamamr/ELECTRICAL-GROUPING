@@ -614,27 +614,33 @@ pembagian yang kelihatan masuk akal padahal salah, dan itu jenis kesalahan yang
 paling lama tidak ketahuan. Jalan keluar sebenarnya adalah tabel `rooms` beserta
 batas geometrinya — belum ada.
 
-### Papan catur berlaku di semua kolom, tanpa kecuali
+### Baris dihabiskan berpasangan, sisanya tetap selang-seling
 
-Dua percobaan gagal sebelum ini, dan keduanya salah di tempat yang sama.
+"Baris" dalam istilah proyek ini adalah deretan lampu **tegak**, bukan mendatar.
+Ruangan LOUNGE 3 deretan tegak disebut "tiga baris". Salah mengartikannya sempat
+membuat beberapa putaran terbuang.
 
-Yang pertama memakai chamfer sebagai bentuk tunggal untuk seluruh denah. Chamfer di
-atas diagonal **menghapus** bentuk silangnya — sudutnya dipotong, X berubah jadi siku
-membulat.
+Aturannya, dari gambar acuan:
 
-Yang kedua memperlakukan kolom yang tidak kebagian pasangan sebagai satu blok dan
-menempelkannya utuh ke satu kaki. Hasilnya kolom itu jadi satu garis tegak yang
-menyambung empat lampu **beruntun**, padahal yang diminta justru selang-seling. Ini
-kesalahan yang lebih dalam: ia mengubah pembagian saklar, bukan cuma gambarnya.
+1. Baris dihabiskan dua-dua: (1,2), lalu (3,4), dan seterusnya
+2. Tiap pasangan **menyilang** — di dalam satu pasangan, satu kaki mengambil sisi
+   kiri di lampu ganjil dan sisi kanan di lampu genap, jadi urutan turunnya membentuk X
+3. Baris yang tidak kebagian pasangan dikerjakan **terakhir**
+4. Semua pasangan dan baris sisa menyumbang ke **dua kaki yang sama** — lima baris
+   tetap dua saklar, bukan lima
 
-Aturannya sekarang tiga, dan ketiganya diuji:
+Pembagian saklarnya ternyata persis papan catur `(baris + kolom) % jumlah saklar`,
+dan itu berlaku di baris sisa juga: lampu ke-1, ke-3, ke-5 ke satu saklar, ke-2 dan
+ke-4 ke saklar lain. Dua percobaan gagal karena melanggar ini dari arah berlawanan —
+yang satu menempelkan seluruh baris sisa ke satu kaki, yang lain membuang konsep
+pasangan sama sekali dan memilih tetangga terdekat, yang menghasilkan chevron
+menyapu seluruh ruangan alih-alih silang per pasangan.
 
-1. Papan catur `(baris + kolom) % jumlah saklar` untuk **seluruh** lampu
-2. Garis hanya menyambung lampu sesama saklar, dan tidak menyentuh lampu saklar lain
-3. Dua kaki tidak boleh berimpit sepanjang jalan
-
-Gaya gambar tidak ikut menentukan pembagian saklar. Lampu mana ikut saklar mana adalah
-urusan listrik; silang dan siku hanya berbeda bentuk garisnya.
+Konsekuensi langsung dari nomor 3: dua lampu sewarna di baris sisa selalu terpisah
+satu lampu, jadi garisnya **wajib** memutar untuk melompatinya. Zigzag di baris sisa
+bukan pilihan gaya — ia satu-satunya cara menyambung tanpa menembus lampu saklar
+sebelah. Kedua kaki memutar ke sisi berlawanan supaya tidak berimpit, dan sisi luar
+ruangan didahulukan karena di luar hampir selalu kosong.
 
 ### Kenapa tiga kolom pasti butuh sambungan bukan-diagonal
 
