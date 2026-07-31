@@ -1,8 +1,9 @@
 'use client';
 
 import {useMemo, useRef, useState} from 'react';
-import type {Device} from '@/lib/contract';
+import type {Circuit, Device} from '@/lib/contract';
 import {isSelectable} from '@/lib/contract';
+import {orderForRouting, roundedPath, routeThrough, seriesFor} from '@/lib/routing';
 import {STATUS_STYLE, geometryFor, symbolFor} from '@/lib/symbols';
 
 type Bounds = {minX: number; minY: number; width: number; height: number};
@@ -25,7 +26,16 @@ function useLayout(devices: Device[]) {
     // Satu titik, atau semua titik sebaris, akan memberi lebar nol.
     const spanX = Math.max(maxX - minX, 1000);
     const spanY = Math.max(maxY - minY, 1000);
-    const pad = Math.max(spanX, spanY) * 0.08;
+    const reach = Math.max(spanX, spanY);
+
+    // Sama dengan `max(bounds) / 90` — ditulis dari `reach` supaya padding di bawah
+    // bisa ikut menimbang radius, yang butuh dihitung lebih dulu.
+    const radius = Math.max((reach * 1.16) / 90, 60);
+
+    // Padding juga harus menampung lengkung terluar garis circuit: pada denah yang
+    // sangat rapat, garis yang memutar di tepi akan terpotong batas viewBox kalau
+    // padding hanya mengikuti rentang model.
+    const pad = Math.max(reach * 0.08, radius * 4);
 
     const bounds: Bounds = {
       minX: minX - pad,
@@ -35,7 +45,6 @@ function useLayout(devices: Device[]) {
     };
 
     const flip = minY + maxY;
-    const radius = Math.max(Math.max(bounds.width, bounds.height) / 90, 60);
 
     return {
       bounds,
@@ -47,19 +56,62 @@ function useLayout(devices: Device[]) {
 
 export function PlanCanvas({
   devices,
+  circuits,
   selected,
   onSelect,
   symbolOverrides,
-  highlighted
+  highlighted,
+  activeCircuitId
 }: {
   devices: Device[];
+  /** Urutannya menentukan warna garis, jadi harus sama dengan yang dipakai keterangan. */
+  circuits: Circuit[];
   selected: ReadonlySet<string>;
   onSelect: (ids: string[], mode: 'replace' | 'toggle' | 'add') => void;
   symbolOverrides: Record<string, string>;
   /** Device milik circuit yang sedang disorot di daftar samping. */
   highlighted?: ReadonlySet<string>;
+  /** Circuit yang sedang disorot; sisanya diredupkan, tidak disembunyikan. */
+  activeCircuitId?: string | null;
 }) {
   const {bounds, radius, place} = useLayout(devices);
+
+  /**
+   * Satu path per circuit. Device milik circuit lain jadi penghalang, jadi garis
+   * memutar melewatinya — dan tiap circuit memutar ke sisinya sendiri.
+   */
+  const routes = useMemo(() => {
+    const positions = new Map(devices.map((device) => [device.revit_unique_id, place(device)] as const));
+
+    return circuits
+      .map((circuit, index) => {
+        const own = new Set(circuit.device_unique_ids);
+
+        // Circuit boleh memuat device dari lantai lain; yang tidak ada di halaman ini dilewati.
+        const stops = orderForRouting(
+          circuit.device_unique_ids.flatMap((id) => {
+            const point = positions.get(id);
+            return point ? [point] : [];
+          }),
+          radius * 3
+        );
+
+        const obstacles = devices
+          .filter((device) => !own.has(device.revit_unique_id))
+          .map((device) => place(device));
+
+        const series = seriesFor(index);
+
+        return {
+          id: circuit.id,
+          series,
+          d: roundedPath(routeThrough(stops, obstacles, radius * 2, series.side), radius * 1.2)
+        };
+      })
+      .filter((route) => route.d.includes('L'));
+  }, [circuits, devices, place, radius]);
+
+  const weight = radius / 2.6;
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [marquee, setMarquee] = useState<{x1: number; y1: number; x2: number; y2: number} | null>(null);
   const additive = useRef(false);
@@ -155,6 +207,23 @@ export function PlanCanvas({
         height={bounds.height}
         fill="url(#plan-grid)"
       />
+
+      {/* Garis digambar sebelum simbol supaya simbol device tetap di atas. */}
+      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+        {routes.map((route) => (
+          <path
+            key={route.id}
+            d={route.d}
+            stroke={route.series.color}
+            strokeWidth={weight}
+            strokeDasharray={
+              route.series.dash ? route.series.dash.map((part) => part * weight).join(' ') : undefined
+            }
+            opacity={activeCircuitId && activeCircuitId !== route.id ? 0.22 : 1}
+            className="pointer-events-none transition-opacity duration-200"
+          />
+        ))}
+      </g>
 
       {devices.map((device) => {
         const point = place(device);

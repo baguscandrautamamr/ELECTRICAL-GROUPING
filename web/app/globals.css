@@ -32,6 +32,19 @@
   --ok: #1d8b4b;
   --warn: #a16c00;
   --danger: #c0282d;
+
+  /*
+    Warna garis circuit di denah. Bukan warna status: status ada di simbol device,
+    seri ini yang membedakan satu saklar dari saklar lain. Urutannya sengaja mulai
+    dari biru lalu hijau, dua warna yang paling jauh terbaca saat bersebelahan.
+  */
+  --series-1: #0071e3;
+  --series-2: #1d8b4b;
+  --series-3: #7d3cc4;
+  --series-4: #b35300;
+  --series-5: #0f7d8c;
+  --series-6: #b3246b;
+
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.12);
 }
 
@@ -47,6 +60,15 @@
   --ok: #30d158;
   --warn: #ffd60a;
   --danger: #ff453a;
+
+  /* Versi terang: di atas permukaan gelap, warna pekat jadi tidak terbaca. */
+  --series-1: #4aa8ff;
+  --series-2: #30d158;
+  --series-3: #bf5af2;
+  --series-4: #ff9f0a;
+  --series-5: #40c8e0;
+  --series-6: #ff6482;
+
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
 }
 

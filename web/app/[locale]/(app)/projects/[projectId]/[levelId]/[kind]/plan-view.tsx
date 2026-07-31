@@ -144,10 +144,12 @@ export function PlanView({
 
         <PlanCanvas
           devices={devices}
+          circuits={circuits}
           selected={selected}
           onSelect={select}
           symbolOverrides={symbolOverrides}
           highlighted={highlighted}
+          activeCircuitId={hovered}
         />
 
         <p className="text-[12px] text-muted">{t('hint')}</p>
@@ -300,7 +302,7 @@ export function PlanView({
         </Card>
 
         <Card>
-          <Legend familyKeys={familyKeys} />
+          <Legend familyKeys={familyKeys} circuits={circuits} />
         </Card>
       </div>
     </div>
