@@ -2,6 +2,7 @@
 
 import type {WireRunPayload} from '@/lib/contract';
 import {isKind} from '@/lib/contract';
+import {classifyError} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 
 export type CircuitActionResult =
@@ -10,7 +11,7 @@ export type CircuitActionResult =
 
 export type WiringActionResult =
   | {ok: true}
-  | {ok: false; reason: 'selection' | 'lineStyle' | 'failed'};
+  | {ok: false; reason: 'selection' | 'lineStyle' | 'schema' | 'failed'};
 
 /**
  * Menyimpan usulan grouping sebagai circuit berstatus draft.
@@ -133,5 +134,9 @@ export async function queueWiring(input: {
     p_runs: input.runs
   });
 
-  return error ? {ok: false, reason: 'failed'} : {ok: true};
+  if (!error) return {ok: true};
+
+  // `queue_wiring` datang dari migrasi yang lebih baru. Kalau ia belum ada, yang salah
+  // bukan kiriman user — dan "terjadi kesalahan" mengirim orang mencari yang keliru.
+  return {ok: false, reason: classifyError(error) === 'schema' ? 'schema' : 'failed'};
 }

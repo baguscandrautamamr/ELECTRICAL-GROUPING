@@ -41,6 +41,48 @@ public static class PostgrestSchema
     }
 
     /// <summary>
+    /// Nama tabel yang belum ada di database, dari body error PostgREST — atau null kalau
+    /// kegagalannya sebab lain.
+    /// </summary>
+    /// <remarks>
+    /// Sepasang dengan <see cref="UnknownColumn"/>, dan ada karena alasan yang sama:
+    /// add-in dipasang user lewat ZIP, migrasi ditembakkan lewat <c>supabase db push</c>,
+    /// dan selisih di antara keduanya adalah keadaan biasa. Yang tertangani sebelumnya cuma
+    /// kolom yang belum ada. Tabel yang belum ada — kasus yang justru lebih sering, karena
+    /// setiap fitur baru datang bersama tabelnya — menggagalkan <b>seluruh</b> tarikan
+    /// model dengan <c>http_404</c>, termasuk device dan panel yang sudah lama ada.
+    ///
+    /// PostgREST menjawabnya <c>PGRST205</c> dengan pesan seperti
+    /// <c>Could not find the table 'public.line_styles' in the schema cache</c>. Postgres
+    /// sendiri memakai <c>42P01</c> untuk hal yang sama pada fungsi; keduanya diterima di
+    /// sini, sama seperti yang sudah dilakukan <c>web/lib/supabase/errors.ts</c>.
+    ///
+    /// Kodenya diperiksa lebih dulu, bukan hanya pola pesannya — melewatkan sebuah tabel
+    /// karena salah baca berarti fitur mati diam-diam.
+    /// </remarks>
+    public static string? MissingTable(string? body)
+    {
+        if (string.IsNullOrEmpty(body) ||
+            (!body.Contains("PGRST205", StringComparison.Ordinal) &&
+             !body.Contains("42P01", StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        var match = Regex.Match(body, @"Could not find the table '(?:public\.)?([^']+)'", RegexOptions.None,
+            TimeSpan.FromSeconds(1));
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+
+        // 42P01 dari Postgres berbunyi lain: relation "public.line_styles" does not exist.
+        match = Regex.Match(body, @"relation ""(?:public\.)?([^""]+)"" does not exist", RegexOptions.None,
+            TimeSpan.FromSeconds(1));
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    /// <summary>
     /// Membuang satu kolom dari payload, baik ia satu objek maupun array baris.
     /// </summary>
     /// <returns>

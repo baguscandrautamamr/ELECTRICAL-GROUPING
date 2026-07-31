@@ -37,6 +37,58 @@ public class PostgrestSchemaTests
         Assert.Null(PostgrestSchema.UnknownColumn(body));
     }
 
+    /// <summary>
+    /// Tabel yang belum ada adalah kasus yang lebih sering daripada kolom yang belum ada:
+    /// setiap fitur baru datang bersama tabelnya sendiri. Sebelum ini kegagalannya
+    /// menggagalkan seluruh tarikan model dengan <c>http_404</c>, termasuk device dan
+    /// panel yang sudah lama ada.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        """{"code":"PGRST205","details":null,"hint":null,"message":"Could not find the table 'public.line_styles' in the schema cache"}""",
+        "line_styles")]
+    [InlineData(
+        """{"code":"PGRST205","message":"Could not find the table 'layout_lighting_devices' in the schema cache"}""",
+        "layout_lighting_devices")]
+    [InlineData(
+        """{"code":"42P01","message":"relation \"public.line_styles\" does not exist"}""",
+        "line_styles")]
+    public void Reads_the_table_name_postgrest_complains_about(string body, string expected)
+    {
+        Assert.Equal(expected, PostgrestSchema.MissingTable(body));
+    }
+
+    /// <summary>
+    /// Kegagalan lain tidak boleh terbaca sebagai tabel yang hilang. Melewati sebuah tabel
+    /// karena salah baca membuat fiturnya mati diam-diam; menyerah menghasilkan pesan.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"code":"PGRST204","message":"Could not find the 'panel_unique_id' column of 'devices' in the schema cache"}""")]
+    [InlineData("""{"code":"PGRST301","message":"JWT expired"}""")]
+    [InlineData("""{"message":"Could not find the table 'public.line_styles' in the schema cache"}""")]
+    [InlineData("""{"code":"PGRST205","message":"sesuatu yang lain"}""")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void Leaves_every_other_failure_alone_for_tables(string? body)
+    {
+        Assert.Null(PostgrestSchema.MissingTable(body));
+    }
+
+    /// <summary>
+    /// Dua penanda yang tidak boleh saling tertukar: kolom yang hilang membuat sebagian
+    /// isi tabel kosong, tabel yang hilang membuat seluruh fiturnya tidak ada. Yang satu
+    /// dijawab dengan membuang kolom lalu mengulang, yang lain dengan melewati tabelnya.
+    /// </summary>
+    [Fact]
+    public void Column_and_table_failures_never_read_as_each_other()
+    {
+        const string missingTable =
+            """{"code":"PGRST205","message":"Could not find the table 'public.line_styles' in the schema cache"}""";
+
+        Assert.Null(PostgrestSchema.MissingTable(Rejected));
+        Assert.Null(PostgrestSchema.UnknownColumn(missingTable));
+    }
+
     [Fact]
     public void Drops_the_column_from_every_row_of_a_bulk_insert()
     {

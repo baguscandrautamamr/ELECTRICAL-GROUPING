@@ -373,7 +373,7 @@ public sealed class SyncController : IDisposable
                 _lastPush = (projectId, fingerprint);
                 Interlocked.Exchange(ref _modelDirty, 0);
                 Log(LogKind.Ok, "log.push_done", snapshot.Devices.Count, snapshot.Panels.Count);
-                WarnAboutMissingColumns();
+                WarnAboutMissingSchema();
             });
         });
     }
@@ -632,20 +632,30 @@ public sealed class SyncController : IDisposable
     /// Revit setelahnya, karena circuit lamanya sudah tidak ada.
     /// </summary>
     /// <summary>
-    /// Menyebut kolom yang dibuang karena database belum mengenalnya.
+    /// Menyebut kolom dan tabel yang dilewati karena database belum mengenalnya.
     /// </summary>
     /// <remarks>
     /// Tarikan modelnya berhasil — itu sebabnya barisnya peringatan, bukan kesalahan.
-    /// Tapi fitur yang bergantung pada kolom itu tidak akan jalan di web, dan tanpa baris
-    /// ini satu-satunya gejalanya adalah layar yang isinya kurang tanpa sebab yang
-    /// terlihat. Disebutkan sekali per kolom, bukan sekali per permintaan.
+    /// Tapi fitur yang bergantung padanya tidak akan jalan di web, dan tanpa baris ini
+    /// satu-satunya gejalanya adalah layar yang isinya kurang tanpa sebab yang terlihat.
+    /// Disebutkan sekali per kolom dan per tabel, bukan sekali per permintaan.
+    ///
+    /// Tabel dan kolom dipisah jadi dua baris karena jalan keluarnya sama tapi
+    /// akibatnya tidak: kolom yang hilang membuat sebagian isi tabel kosong, tabel yang
+    /// hilang membuat seluruh fiturnya tidak ada.
     /// </remarks>
-    private void WarnAboutMissingColumns()
+    private void WarnAboutMissingSchema()
     {
-        var missing = _api.Client.MissingColumns;
-        if (missing.Count > 0)
+        var columns = _api.Client.MissingColumns;
+        if (columns.Count > 0)
         {
-            Log(LogKind.Warn, "log.missing_columns", string.Join(", ", missing));
+            Log(LogKind.Warn, "log.missing_columns", string.Join(", ", columns));
+        }
+
+        var tables = _api.MissingTables;
+        if (tables.Count > 0)
+        {
+            Log(LogKind.Warn, "log.missing_tables", string.Join(", ", tables));
         }
     }
 

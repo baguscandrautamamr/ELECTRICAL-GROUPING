@@ -49,6 +49,7 @@ export function PlanView({
   symbolOverrides,
   lightingDevices,
   lineStyles,
+  lineStylesUnavailable,
   switchDataMissing
 }: {
   projectId: string;
@@ -62,6 +63,8 @@ export function PlanView({
   lightingDevices: LightingDevice[];
   /** Line style dari model, pilihan gaya garis saat mengirim wiring ke Revit. */
   lineStyles: LineStyle[];
+  /** Benar kalau tabel line style-nya sendiri belum ada — migrasi belum ditembakkan. */
+  lineStylesUnavailable: boolean;
   /** Benar kalau project ini belum punya data saklar sama sekali. */
   switchDataMissing: boolean;
 }) {
@@ -237,7 +240,9 @@ export function PlanView({
             ? w('sendNeedsSelection')
             : result.reason === 'lineStyle'
               ? w('sendNeedsLineStyle')
-              : errors('unknown')
+              : result.reason === 'schema'
+                ? w('sendNeedsMigration')
+                : errors('unknown')
       });
     });
   }
@@ -545,6 +550,7 @@ export function PlanView({
           onOptionsChange={setWiringOptions}
           plan={wiringPlan}
           lineStyles={lineStyles}
+          lineStylesUnavailable={lineStylesUnavailable}
           lineStyleId={lineStyleId}
           onLineStyleChange={(id) => {
             setLineStyleId(id);
