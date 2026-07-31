@@ -323,7 +323,17 @@ export function WiringPanel({
                     {room.inferred ? (
                       <TriangleAlert className="size-3.5 shrink-0 text-warn" aria-label={t('inferred')} />
                     ) : null}
-                    <span className="shrink-0 text-[12px] text-muted">
+                    {/*
+                      Jumlah saklar yang terhitung untuk ruangan ini disebutkan, bukan
+                      disimpan di dalam hitungan. Inilah satu-satunya angka yang menjelaskan
+                      kenapa sebuah ruangan terbelah — dan tanpa ditampilkan, ruangan yang
+                      di Revit punya satu saklar tapi di sini terbelah dua tidak punya
+                      petunjuk sama sekali: yang terlihat cuma garis yang terputus.
+                    */}
+                    <span className="shrink-0 text-[12px] text-muted tabular-nums">
+                      {t('roomSwitches', {count: room.switches})}
+                    </span>
+                    <span className="shrink-0 text-[12px] text-muted tabular-nums">
                       {t('roomDevices', {count: room.devices})}
                     </span>
                   </li>

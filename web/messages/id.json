@@ -155,7 +155,8 @@
     "sent": "{count, plural, other {# kaki terkirim ke antrean. Ambil rencana dari add-in untuk menggambarnya; garis lama di denah ini akan diganti.}}",
     "lineStyleNeedsMigration": "Tabel line style belum ada di database. Jalankan migrasi terbaru (supabase db push), lalu tarik ulang model dari add-in.",
     "sendNeedsMigration": "Database belum punya fungsi untuk mengantre gambar garis. Jalankan migrasi terbaru (supabase db push), lalu coba lagi.",
-    "inModel": "{count, plural, other {# ruas garis sedang ada di Revit untuk denah ini. Mengirim lagi menggantinya, bukan menumpuknya.}}"
+    "inModel": "{count, plural, other {# ruas garis sedang ada di Revit untuk denah ini. Mengirim lagi menggantinya, bukan menumpuknya.}}",
+    "roomSwitches": "{count, plural, =0 {tanpa saklar} other {# saklar}}"
   },
   "circuits": {
     "heading": "Circuit",

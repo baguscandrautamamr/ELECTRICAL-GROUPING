@@ -155,7 +155,8 @@
     "sent": "{count, plural, other {# legs queued. Fetch the plan from the add-in to draw them; the existing lines on this plan will be replaced.}}",
     "lineStyleNeedsMigration": "The line style table does not exist in the database yet. Run the latest migration (supabase db push), then push the model again from the add-in.",
     "sendNeedsMigration": "The database has no function for queueing lines yet. Run the latest migration (supabase db push), then try again.",
-    "inModel": "{count, plural, other {# line segments are currently in Revit for this plan. Sending again replaces them rather than stacking on top.}}"
+    "inModel": "{count, plural, other {# line segments are currently in Revit for this plan. Sending again replaces them rather than stacking on top.}}",
+    "roomSwitches": "{count, plural, =0 {no switch} other {# switches}}"
   },
   "circuits": {
     "heading": "Circuits",

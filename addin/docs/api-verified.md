@@ -191,6 +191,7 @@ memakai line style tertentu, akan ikut membuang garis yang digambar user sendiri
 | `FamilyInstance.Symbol.Family.Name`, `FamilyInstance.Symbol.Name` | Sumber `family_key`. |
 | `FamilyInstance.Room` | Bisa melempar kalau family tidak punya Room Calculation Point. |
 | `FamilyInstance.Host` | Fallback level untuk fixture yang di-host ceiling. |
+| `FamilyInstance.SuperComponent` | `Element`, null untuk instance tingkat atas. Dipakai membuang komponen bersarang saat membaca saklar — satu saklar dua gang bisa berisi beberapa komponen di kategori yang sama, dan tiap komponen ikut ter-collect. |
 | `LocationPoint.Point` | Koordinat device. |
 | `LocationCurve.Curve` + `Curve.Evaluate(double, bool)` | Fixture berbasis garis tidak punya `LocationPoint`; titik tengahnya diambil di parameter 0,5 ternormalisasi. |
 | `Element.get_BoundingBox(View)` | Dipanggil dengan `null` = kotak di koordinat model. Jaring terakhir untuk device tanpa location. |
