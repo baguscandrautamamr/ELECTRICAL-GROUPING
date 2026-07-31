@@ -857,6 +857,31 @@ sesuatu yang tidak pernah dilihat siapa pun di pratinjau — dan itu melanggar j
 atas. Jumlah yang dilewati disebutkan di panel, karena diam-diam melewatinya adalah
 bagaimana "kok cuma sebagian yang terkirim" jadi pertanyaan tanpa jawaban.
 
+**Mengirim garis berarti mengganti, bukan menambah.** Kiriman kedua untuk denah yang sama
+adalah keadaan biasa, bukan jarang: begitu ada electrical device yang berubah, wiring di
+web ikut berubah dan user mengirimnya lagi. Versi pertama hanya bisa menambah, jadi
+garisnya dobel — yang lama tetap ada, yang baru menumpuk di atasnya.
+
+Yang dibutuhkan add-in adalah jawaban atas satu pertanyaan: garis mana di denah ini yang
+dibuat CircuitSync? Dua jalan pintas keduanya salah. Menghapus semua detail curve di view
+akan membuang garis yang digambar user sendiri; menghapus berdasarkan line style pun sama,
+karena style itu dipakai user juga. Jadi yang dipakai catatan, bukan tebakan: tabel
+`wiring_curves` menyimpan `UniqueId` tiap garis, ditulis add-in setelah menggambar,
+diganti seluruhnya setiap kiriman.
+
+Hapus dan gambar hidup di satu `TransactionGroup` yang sama, lalu `Assimilate()`. Kalau
+dipisah, sekali Ctrl+Z hanya membuang garis baru dan meninggalkan denah tanpa garis sama
+sekali — lebih buruk daripada keadaan sebelum mengirim.
+
+Catatan ditulis **sebelum** job ditandai selesai. Kalau urutannya dibalik dan penulisan
+catatan gagal, job sudah tampak berhasil di web sementara garis yang baru digambar tidak
+tercatat — dan kiriman berikutnya menumpuk lagi, tanpa sebab yang terlihat.
+
+Garis yang sudah tidak ada di model dilewati tanpa keluhan: user boleh menghapusnya
+sendiri, dan hasil akhirnya tetap sama. Yang disebutkan di web adalah jumlah ruas yang
+sedang hidup di Revit untuk denah itu, supaya "apakah ini mengganti atau menumpuk" terbaca
+di sebelah tombolnya alih-alih dipelajari dari model yang garisnya dobel.
+
 Ruas yang lebih pendek daripada `Application.ShortCurveTolerance` dibuang sebelum
 digambar. Toleransi itu dibaca dari Revit, bukan ditulis sebagai angka: menebaknya salah
 di satu sisi — terlalu kecil menghasilkan exception, terlalu besar membuang ruas yang sah.

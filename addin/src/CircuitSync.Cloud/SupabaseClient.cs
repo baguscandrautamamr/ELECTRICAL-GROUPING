@@ -261,6 +261,18 @@ public sealed class SupabaseClient : IDisposable
     private readonly HashSet<string> _missingColumns = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Melupakan kolom yang pernah dibuang, supaya daftarnya menggambarkan tarikan
+    /// berikutnya dan bukan seluruh riwayat sesi.
+    /// </summary>
+    /// <remarks>
+    /// Dipanggil di awal setiap tarikan model. Client hidup selama panel terbuka, jadi
+    /// tanpa ini kolom yang tadinya belum ada tetap dilaporkan hilang lama setelah
+    /// migrasinya diterapkan — peringatan yang membantah baris "model terkirim" di
+    /// sebelahnya, dan mengirim user memperbaiki sesuatu yang sudah beres.
+    /// </remarks>
+    public void ForgetMissingColumns() => _missingColumns.Clear();
+
+    /// <summary>
     /// Permintaan bertubuh JSON yang tahan terhadap database yang tertinggal satu migrasi.
     /// </summary>
     /// <remarks>

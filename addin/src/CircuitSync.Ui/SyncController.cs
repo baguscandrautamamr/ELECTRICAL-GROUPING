@@ -436,7 +436,7 @@ public sealed class SyncController : IDisposable
 
             foreach (var job in wiringJobs)
             {
-                await DrawWiringJobAsync(job).ConfigureAwait(false);
+                await DrawWiringJobAsync(projectId.Value, job).ConfigureAwait(false);
             }
         });
     }
@@ -450,8 +450,14 @@ public sealed class SyncController : IDisposable
     /// dengan circuit lain, tidak butuh slot panel, dan tidak berubah arti kalau sebuah
     /// device dipindahkan. Yang perlu ada hanya view-nya dan line style-nya, dan itu
     /// diperiksa <see cref="WiringApplier"/> terhadap dokumen yang sedang terbuka.
+    ///
+    /// Pengiriman bersifat <b>mengganti</b>. Garis kiriman sebelumnya untuk denah yang
+    /// sama dibaca dari <c>wiring_curves</c>, dihapus dari model, lalu catatannya ditulis
+    /// ulang dengan garis yang baru. Tanpa itu kiriman kedua menumpuk di atas yang
+    /// pertama — dan kiriman kedua adalah hal yang biasa, karena setiap kali ada
+    /// electrical device berubah, wiring di web ikut berubah.
     /// </remarks>
-    private async Task DrawWiringJobAsync(SyncJobRow job)
+    private async Task DrawWiringJobAsync(Guid projectId, SyncJobRow job)
     {
         if (job.Wiring() is not { } request)
         {
@@ -463,9 +469,14 @@ public sealed class SyncController : IDisposable
             return;
         }
 
+        // Dibaca sebelum melompat ke thread Revit: ini panggilan jaringan, dan aturan
+        // thread di kelas ini melarang jaringan di dalam RevitTaskQueue.Post.
+        var existing = await _api.FetchWiringCurvesAsync(projectId, request.LayoutUniqueId)
+            .ConfigureAwait(false);
+
         var result = await _queue.PostAsync<WiringApplyResult?>(app =>
             app.ActiveUIDocument?.Document is { } doc
-                ? WiringApplier.Apply(doc, request)
+                ? WiringApplier.Apply(doc, request, existing)
                 : null).ConfigureAwait(false);
 
         if (result is null)
@@ -476,8 +487,25 @@ public sealed class SyncController : IDisposable
 
         if (result.Ok)
         {
+            // Catatan ditulis sebelum job ditandai selesai. Kalau urutannya dibalik dan
+            // penulisan catatan gagal, job sudah tampak berhasil di web sementara garis
+            // yang baru digambar tidak tercatat — dan kiriman berikutnya menumpuk lagi.
+            await _api.ReplaceWiringCurvesAsync(projectId, request.LayoutUniqueId, result.Drawn)
+                .ConfigureAwait(false);
+
             await _api.MarkJobAppliedAsync(job.Id).ConfigureAwait(false);
-            Log(LogKind.Ok, "log.wiring_done", result.RunsDrawn, result.LinesDrawn);
+
+            Log(LogKind.Ok, result.LinesErased > 0 ? "log.wiring_replaced" : "log.wiring_done",
+                result.RunsDrawn, result.LinesDrawn, result.LinesErased);
+
+            // Peringatannya sempit, bukan seluruh daftar tabel yang hilang: yang relevan di
+            // sini cuma satu, dan akibatnya khas — garis akan menumpuk di kiriman berikutnya
+            // karena tidak ada yang mencatat garis yang baru digambar.
+            if (_api.MissingTables.Contains("wiring_curves"))
+            {
+                Log(LogKind.Warn, "log.wiring_untracked");
+            }
+
             return;
         }
 

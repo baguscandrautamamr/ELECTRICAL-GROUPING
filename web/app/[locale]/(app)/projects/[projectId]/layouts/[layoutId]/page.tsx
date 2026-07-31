@@ -87,7 +87,8 @@ export default async function PlanPage({params}: Params) {
     switchMembers,
     anySwitchMember,
     anySwitch,
-    lineStyles
+    lineStyles,
+    wiringInModel
   ] = await Promise.all([
     supabase.from('projects').select('id, name').eq('id', projectId).maybeSingle(),
     allDevicesOfKind(supabase, projectId, layout.kind),
@@ -151,7 +152,15 @@ export default async function PlanPage({params}: Params) {
     // Dan "project ini belum punya data saklar sama sekali" berbeda lagi: itu yang
     // pantas dapat peringatan di panel wiring, bukan denah yang saklarnya memang nol.
     supabase.from('lighting_devices').select('revit_unique_id').eq('project_id', projectId).limit(1),
-    supabase.from('line_styles').select('*').eq('project_id', projectId).order('sort_order')
+    supabase.from('line_styles').select('*').eq('project_id', projectId).order('sort_order'),
+    // Berapa ruas garis yang sedang ada di Revit untuk denah ini. Hanya jumlahnya yang
+    // dipakai, jadi `head` — barisnya bisa ribuan di denah besar, dan tidak satu pun
+    // dibutuhkan di sini.
+    supabase
+      .from('wiring_curves')
+      .select('revit_unique_id', {count: 'exact', head: true})
+      .eq('project_id', projectId)
+      .eq('layout_unique_id', layoutKey)
   ]);
 
   // `layout_devices` datang dari migrasi yang lebih baru. Belum diterapkan berarti
@@ -244,6 +253,9 @@ export default async function PlanPage({params}: Params) {
           // kedua adalah petunjuk yang salah untuk yang pertama.
           lineStylesUnavailable={classifyError(lineStyles.error) === 'schema'}
           switchDataMissing={(optional(anySwitch) ?? []).length === 0}
+          // Nol saat tabelnya belum ada, dan itu jawaban yang benar: belum ada garis yang
+          // tercatat, jadi kiriman berikutnya memang belum bisa menggantikan apa pun.
+          wiringInModel={wiringInModel.error ? 0 : (wiringInModel.count ?? 0)}
         />
       )}
     </div>
