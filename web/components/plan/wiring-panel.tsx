@@ -3,7 +3,7 @@
 import {ChevronDown, ChevronRight, TriangleAlert} from 'lucide-react';
 import {useTranslations} from 'next-intl';
 import {Badge, Notice, Select} from '@/components/ui';
-import {ROUTING_STYLES, type RoutingStyle, type WiringOptions, type WiringPlan} from '@/lib/wiring';
+import {WIRE_STYLES, type WireStyle, type WiringOptions, type WiringPlan} from '@/lib/wiring';
 
 /**
  * Kontrol wiring per ruangan.
@@ -67,30 +67,38 @@ export function WiringPanel({
           <p className="text-[12px] leading-relaxed text-muted">{t('lineStyleHint')}</p>
 
           <Select
-            label={t('routing')}
-            value={options.routing}
-            onChange={(event) =>
-              onOptionsChange({...options, routing: event.target.value as RoutingStyle})
-            }
+            label={t('style')}
+            value={options.style}
+            onChange={(event) => onOptionsChange({...options, style: event.target.value as WireStyle})}
           >
-            {ROUTING_STYLES.map((style) => (
+            {WIRE_STYLES.map((style) => (
               <option key={style} value={style}>
-                {t(`routing_${style}`)}
+                {t(`style_${style}`)}
               </option>
             ))}
           </Select>
 
-          <Select
-            label={t('switches')}
-            value={String(options.switches)}
-            onChange={(event) => onOptionsChange({...options, switches: Number(event.target.value)})}
-          >
-            {[1, 2, 3].map((count) => (
-              <option key={count} value={count}>
-                {t('switchCount', {count})}
-              </option>
-            ))}
-          </Select>
+          <p className="text-[12px] leading-relaxed text-muted">{t(`styleHint_${options.style}`)}</p>
+
+          {/*
+            Menyilang butuh sepasang kolom, dan pasangan hanya punya dua sisi — jumlah
+            saklarnya tidak bisa dipilih. Pemilihnya disembunyikan alih-alih ditampilkan
+            mati: kontrol yang ada tapi tidak pernah berpengaruh lebih membingungkan
+            daripada kontrol yang memang tidak ada di gaya itu.
+          */}
+          {options.style === 'crossing' ? null : (
+            <Select
+              label={t('switches')}
+              value={String(options.switches)}
+              onChange={(event) => onOptionsChange({...options, switches: Number(event.target.value)})}
+            >
+              {[1, 2, 3].map((count) => (
+                <option key={count} value={count}>
+                  {t('switchCount', {count})}
+                </option>
+              ))}
+            </Select>
+          )}
 
           {plan && inferred > 0 ? (
             <Notice tone="warn">{t('inferredWarning', {count: inferred})}</Notice>
