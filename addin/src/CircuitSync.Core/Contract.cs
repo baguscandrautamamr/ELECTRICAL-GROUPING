@@ -117,6 +117,25 @@ public sealed record LayoutDeviceRow
     [JsonPropertyName("device_unique_id")] public string DeviceUniqueId { get; init; } = "";
 }
 
+/// <summary>
+/// Saklar atau sensor dari kategori <c>OST_LightingDevices</c> — bukan lampunya.
+/// </summary>
+/// <remarks>
+/// Jumlahnya di sebuah ruangan menentukan lampu ruangan itu dipecah jadi berapa
+/// grouping. Tanpa ini batas grouping hanya bisa disimpulkan dari kerapatan lampu,
+/// dan dua ruangan yang dipisah dinding tipis dilebur jadi satu.
+/// </remarks>
+public sealed record LightingDeviceRow
+{
+    [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
+    [JsonPropertyName("revit_unique_id")] public string RevitUniqueId { get; init; } = "";
+    [JsonPropertyName("family_key")] public string FamilyKey { get; init; } = "";
+    [JsonPropertyName("level_key")] public string LevelKey { get; init; } = "";
+    [JsonPropertyName("room_name")] public string? RoomName { get; init; }
+    [JsonPropertyName("x_mm")] public double XMm { get; init; }
+    [JsonPropertyName("y_mm")] public double YMm { get; init; }
+}
+
 public sealed record DeviceRow
 {
     [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
@@ -251,6 +270,9 @@ public sealed record ModelSnapshot
     public IReadOnlyList<PanelRow> Panels { get; init; } = [];
     public IReadOnlyList<DeviceRow> Devices { get; init; } = [];
 
+    /// <summary>Saklar dan sensor, penentu jumlah grouping per ruangan.</summary>
+    public IReadOnlyList<LightingDeviceRow> LightingDevices { get; init; } = [];
+
     /// <summary>Device yang tampak di tiap layout, dibaca per view Revit.</summary>
     public IReadOnlyList<LayoutDeviceRow> LayoutDevices { get; init; } = [];
 
@@ -309,6 +331,7 @@ public sealed record ModelSnapshot
             .Concat(Layouts.Select(Json))
             .Concat(Panels.Select(Json))
             .Concat(Devices.Select(Json))
+            .Concat(LightingDevices.Select(Json))
             .Concat(LayoutDevices.Select(Json));
     }
 }

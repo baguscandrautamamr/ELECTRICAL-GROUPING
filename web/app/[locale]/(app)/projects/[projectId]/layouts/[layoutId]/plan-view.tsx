@@ -11,7 +11,7 @@ import {PlanCanvas} from '@/components/plan/plan-canvas';
 import {SystemBrowser} from '@/components/plan/system-browser';
 import {WiringPanel} from '@/components/plan/wiring-panel';
 import {Badge, Button, Card, CardHeader, Empty, Notice, Select, cx} from '@/components/ui';
-import type {Circuit, Device, DeviceKind, Layout, Panel} from '@/lib/contract';
+import type {Circuit, Device, DeviceKind, Layout, LightingDevice, Panel} from '@/lib/contract';
 import {DEFAULT_WIRING_OPTIONS, planWiring, type WiringOptions} from '@/lib/wiring';
 import {createCircuit, queueApply, removeCircuit, updateCircuit} from './actions';
 
@@ -32,7 +32,8 @@ export function PlanView({
   devices,
   panels,
   circuits,
-  symbolOverrides
+  symbolOverrides,
+  lightingDevices
 }: {
   projectId: string;
   kind: DeviceKind;
@@ -41,6 +42,8 @@ export function PlanView({
   panels: Panel[];
   circuits: Circuit[];
   symbolOverrides: Record<string, string>;
+  /** Saklar di lantai ini; jumlahnya per ruangan memecah lampu jadi beberapa grouping. */
+  lightingDevices: LightingDevice[];
 }) {
   const t = useTranslations('plan');
   const c = useTranslations('circuits');
@@ -86,8 +89,8 @@ export function PlanView({
   const [wiringOpen, setWiringOpen] = useState(false);
   const [wiringOptions, setWiringOptions] = useState<WiringOptions>(DEFAULT_WIRING_OPTIONS);
   const wiringPlan = useMemo(
-    () => (wiringOpen ? planWiring(devices, wiringOptions) : null),
-    [wiringOpen, devices, wiringOptions]
+    () => (wiringOpen ? planWiring(devices, wiringOptions, lightingDevices) : null),
+    [wiringOpen, devices, wiringOptions, lightingDevices]
   );
 
   const usablePanels = useMemo(() => panels.filter((panel) => panel.is_usable), [panels]);

@@ -56,9 +56,52 @@ public static class ModelReader
             Layouts = layouts,
             Panels = panels,
             Devices = devices,
+            LightingDevices = ReadLightingDevices(doc, levels),
             LayoutDevices = layoutDevices,
             DeviceSystems = systems,
         };
+    }
+
+    /// <summary>
+    /// Saklar dan sensor: kategori <c>OST_LightingDevices</c>, bukan
+    /// <c>OST_LightingFixtures</c> yang berisi lampunya.
+    /// </summary>
+    /// <remarks>
+    /// Yang dipakai dari sini cuma letaknya. Jumlah saklar di sebuah ruangan menentukan
+    /// lampu ruangan itu dipecah jadi berapa grouping — dua saklar berarti dua grouping,
+    /// serapat apa pun lampunya. Tanpa data ini batas grouping hanya bisa disimpulkan
+    /// dari kerapatan lampu, dan dua ruangan yang dipisah dinding tipis dilebur jadi satu.
+    ///
+    /// Tidak ada penyaringan family di sini: apa pun yang Revit taruh di kategori itu
+    /// dianggap penentu grouping. Menebak mana yang "saklar sungguhan" dari namanya akan
+    /// meleset di setiap template yang penamaannya berbeda.
+    /// </remarks>
+    private static List<LightingDeviceRow> ReadLightingDevices(Document doc, IReadOnlyList<LevelRow> levels)
+    {
+        var rows = new List<LightingDeviceRow>();
+
+        var instances = new FilteredElementCollector(doc)
+            .OfCategory(BuiltInCategory.OST_LightingDevices)
+            .WhereElementIsNotElementType()
+            .OfClass(typeof(FamilyInstance))
+            .Cast<FamilyInstance>();
+
+        foreach (var instance in instances)
+        {
+            var point = PointOf(instance);
+
+            rows.Add(new LightingDeviceRow
+            {
+                RevitUniqueId = instance.UniqueId,
+                FamilyKey = FamilyKey.Make(instance.Symbol.Family.Name, instance.Symbol.Name),
+                LevelKey = LevelKeyOf(doc, instance, levels, point),
+                RoomName = RoomNameOf(instance),
+                XMm = point is null ? 0 : Units.ToMillimetersRounded(point.X),
+                YMm = point is null ? 0 : Units.ToMillimetersRounded(point.Y),
+            });
+        }
+
+        return rows;
     }
 
     /// <summary>

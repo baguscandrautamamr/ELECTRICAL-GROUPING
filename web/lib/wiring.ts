@@ -10,7 +10,7 @@
  * Konsekuensinya, algoritmanya tidak boleh dikembarkan di sisi C#. Lapisan Revit
  * menggambar apa yang diperintahkan; keputusan bentuknya berhenti di sini.
  */
-import type {Device} from '@/lib/contract';
+import type {Device, LightingDevice} from '@/lib/contract';
 import {isSelectable} from '@/lib/contract';
 
 /**
@@ -55,6 +55,10 @@ export type WireRoom = {
   /** Null berarti ruangannya tidak bernama di Revit dan dikira-kira dari kerapatan titik. */
   name: string | null;
   inferred: boolean;
+  /** Benar kalau ruangan ini hasil pemecahan karena saklarnya lebih dari satu. */
+  split: boolean;
+  /** Saklar yang jatuh ke ruangan asalnya. Nol berarti model belum membawa datanya. */
+  switches: number;
   devices: number;
 };
 
@@ -164,6 +168,113 @@ function roomsOf(devices: readonly Device[], spacing: number): {key: string; nam
     });
 
   return rooms;
+}
+
+/**
+ * Memecah sekumpulan lampu jadi sebanyak saklar yang ada di dalamnya.
+ *
+ * Kerapatan saja tidak cukup untuk menemukan batas ruangan. Dua ruangan yang dipisah
+ * dinding tipis berjarak sekitar 1,5 sampai 2 kali jarak antar lampu — di bawah ambang
+ * `ROOM_REACH`, jadi keduanya dilebur jadi satu dan garis wiring menyeberang dinding.
+ * Menaikkan ambangnya cuma memindahkan salah tebak ke ukuran ruangan yang lain.
+ *
+ * Jumlah saklar menjawabnya tanpa menebak: dua lighting device berarti dua grouping,
+ * serapat apa pun lampunya. Pemotongannya dilakukan dengan mengecilkan jangkauan
+ * pengelompokan sampai kumpulannya benar-benar pecah jadi sebanyak itu — dengan
+ * sendirinya potongan jatuh di celah terlebar, yaitu di dindingnya.
+ */
+function splitBySwitches(devices: readonly Device[], parts: number, spacing: number): Device[][] {
+  if (parts < 2 || devices.length < parts) return [[...devices]];
+
+  // Dipotong **antar baris**, bukan lewat pengelompokan ulang seluruh titik.
+  // Percobaan pertama mengecilkan jangkauan pengelompokan sampai kumpulannya pecah,
+  // dan itu bekerja hanya kalau ada celah. Di ruangan seragam tidak ada celah sama
+  // sekali: begitu jangkauannya turun di bawah jarak antar lampu, kumpulannya tidak
+  // pecah jadi dua melainkan langsung hancur jadi satu lampu per bagian.
+  const columns = columnGroups(devices, spacing * BAND_REACH);
+  if (columns.length < parts) return [[...devices]];
+
+  // Celah antar baris. Dinding pemisah muncul di sini sebagai celah yang paling lebar.
+  const gaps: {at: number; width: number}[] = [];
+  for (let index = 1; index < columns.length; index++) {
+    gaps.push({at: index, width: columns[index]![0]!.x_mm - columns[index - 1]!.at(-1)!.x_mm});
+  }
+
+  // Celah terlebar menang. Seri diputus oleh keseimbangan — di ruangan seragam semua
+  // celahnya sama, dan tanpa ini potongannya jatuh di tepi alih-alih di tengah.
+  const ideal = (step: number) => (step * columns.length) / parts;
+  const balance = (at: number) =>
+    Math.min(...Array.from({length: parts - 1}, (_, step) => Math.abs(at - ideal(step + 1))));
+
+  const cuts = gaps
+    .slice()
+    .sort((a, b) => b.width - a.width || balance(a.at) - balance(b.at) || a.at - b.at)
+    .slice(0, parts - 1)
+    .map((gap) => gap.at)
+    .sort((a, b) => a - b);
+
+  const pieces: Device[][] = [];
+  let start = 0;
+  for (const cut of [...cuts, columns.length]) {
+    pieces.push(columns.slice(start, cut).flat());
+    start = cut;
+  }
+
+  return pieces.filter((piece) => piece.length > 0);
+}
+
+/** Lampu satu ruangan dikelompokkan per baris tegak, urut dari kiri. */
+function columnGroups(devices: readonly Device[], tolerance: number): Device[][] {
+  const sorted = [...devices].sort((a, b) => a.x_mm - b.x_mm || b.y_mm - a.y_mm);
+  const groups: Device[][] = [];
+
+  let current: Device[] = [];
+  let previousX: number | null = null;
+
+  for (const device of sorted) {
+    if (previousX !== null && device.x_mm - previousX > tolerance) {
+      groups.push(current);
+      current = [];
+    }
+
+    current.push(device);
+    previousX = device.x_mm;
+  }
+
+  if (current.length > 0) groups.push(current);
+
+  return groups;
+}
+
+/**
+ * Berapa saklar yang jatuh ke tiap kumpulan lampu.
+ *
+ * Tiap saklar dimiliki kumpulan yang lampunya paling dekat dengannya. Diputuskan
+ * lewat perbandingan antar kumpulan, bukan per kumpulan sendiri-sendiri: saklar di
+ * dinding pemisah berjarak hampir sama ke dua ruangan, dan menghitungnya di dua-duanya
+ * membuat kedua ruangan terpecah lebih banyak daripada yang sebenarnya.
+ */
+function switchCounts(rooms: readonly {devices: Device[]}[], switches: readonly Point[]): number[] {
+  const counts = rooms.map(() => 0);
+
+  for (const point of switches) {
+    let owner = -1;
+    let nearest = Infinity;
+
+    rooms.forEach((room, index) => {
+      for (const device of room.devices) {
+        const gap = Math.hypot(point.x - device.x_mm, point.y - device.y_mm);
+        if (gap < nearest) {
+          nearest = gap;
+          owner = index;
+        }
+      }
+    });
+
+    if (owner >= 0) counts[owner]!++;
+  }
+
+  return counts;
 }
 
 /** Nilai urut kiri-atas: makin besar makin dekat ke pojok kiri atas denah. */
@@ -682,7 +793,16 @@ function aroundRoute(from: Point, to: Point, detour: number, side: -1 | 1): Poin
  * jadi menariknya ke dalam garis hanya menghasilkan gambar yang menjanjikan sesuatu
  * yang tidak bisa dikerjakan.
  */
-export function planWiring(devices: readonly Device[], options: WiringOptions): WiringPlan {
+export function planWiring(
+  devices: readonly Device[],
+  options: WiringOptions,
+  /**
+   * Saklar dan sensor di lantai ini. Jumlahnya per ruangan memecah lampu ruangan itu
+   * jadi sebanyak itu grouping. Kosong berarti model belum ditarik ulang oleh add-in
+   * yang membacanya — batas grouping jatuh ke kerapatan lampu seperti sebelumnya.
+   */
+  lightingDevices: readonly LightingDevice[] = []
+): WiringPlan {
   const wirable = devices.filter(isSelectable);
   const spacing = medianNearestGap(wirable.map(pointOf));
 
@@ -692,7 +812,18 @@ export function planWiring(devices: readonly Device[], options: WiringOptions): 
   if (spacing === null) {
     const only = wirable[0];
     return {
-      rooms: only ? [{key: 'single', name: only.room_name?.trim() || null, inferred: false, devices: 1}] : [],
+      rooms: only
+        ? [
+            {
+              key: 'single',
+              name: only.room_name?.trim() || null,
+              inferred: false,
+              split: false,
+              switches: 0,
+              devices: 1
+            }
+          ]
+        : [],
       runs: [],
       spacing: null
     };
@@ -704,11 +835,31 @@ export function planWiring(devices: readonly Device[], options: WiringOptions): 
   const rooms: WireRoom[] = [];
   const runs: WireRun[] = [];
 
-  for (const room of roomsOf(wirable, spacing)) {
+  // Kumpulan awal dari nama ruangan dan kerapatan, lalu dipecah lagi menurut jumlah
+  // saklar yang jatuh ke masing-masing. Dua langkah, bukan satu: saklar hanya bisa
+  // dibagikan setelah ada kumpulan untuk dibandingkan.
+  const initial = roomsOf(wirable, spacing);
+  const counts = switchCounts(initial, lightingDevices.map((device) => ({x: device.x_mm, y: device.y_mm})));
+
+  const grouped = initial.flatMap((room, index) => {
+    const parts = splitBySwitches(room.devices, counts[index] ?? 0, spacing);
+    return parts.map((devices, part) => ({
+      key: parts.length > 1 ? `${room.key}#${part + 1}` : room.key,
+      name: room.name,
+      inferred: room.name === null,
+      split: parts.length > 1,
+      switches: counts[index] ?? 0,
+      devices
+    }));
+  });
+
+  for (const room of grouped) {
     rooms.push({
       key: room.key,
       name: room.name,
-      inferred: room.name === null,
+      inferred: room.inferred,
+      split: room.split,
+      switches: room.switches,
       devices: room.devices.length
     });
 

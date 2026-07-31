@@ -657,6 +657,38 @@ lampu, yang selang satu baris berjarak 2 kali, jadi diagonal selalu menang dan
 lompatan jauh hanya muncul kalau memang tidak ada pilihan lain. Lompatan itulah yang
 dirutekan memutar.
 
+### Jumlah grouping datang dari saklar, bukan dari kerapatan lampu
+
+Batas ruangan tidak bisa disimpulkan dari jarak antar lampu. Dua ruangan yang dipisah
+dinding tipis berjarak sekitar 1,5 sampai 2 kali jarak antar lampu — di bawah ambang
+`ROOM_REACH` — jadi keduanya dilebur jadi satu dan garis wiring menyeberang dinding.
+Sudah diukur: pada jarak 1,5x, 2x, dan 2,5x, ketiganya menghasilkan satu ruangan dan
+dua garis yang menyeberang. Baru pada 3x keduanya terpisah.
+
+Menaikkan ambangnya bukan jawaban; ia cuma memindahkan salah tebak ke ukuran ruangan
+yang lain. Yang dibutuhkan data, bukan tebakan yang lebih baik.
+
+Kategori Revit `OST_LightingDevices` berisi saklar dan sensor — terpisah dari
+`OST_LightingFixtures` yang berisi lampunya. Dua saklar di sebuah ruangan berarti dua
+grouping, serapat apa pun lampunya. Tiap saklar dimiliki kumpulan lampu yang paling
+dekat dengannya, diputuskan lewat perbandingan antar kumpulan: saklar di dinding
+pemisah berjarak hampir sama ke dua ruangan, dan menghitungnya di dua-duanya membuat
+keduanya terpecah lebih banyak daripada yang sebenarnya.
+
+Pemecahannya **antar baris**, bukan lewat pengelompokan ulang seluruh titik. Percobaan
+pertama mengecilkan jangkauan pengelompokan sampai kumpulannya pecah, dan itu bekerja
+hanya kalau ada celah. Di ruangan seragam tidak ada celah sama sekali: begitu
+jangkauannya turun di bawah jarak antar lampu, kumpulannya tidak pecah jadi dua
+melainkan langsung hancur jadi satu lampu per bagian — 30 lampu jadi 30 grouping.
+Sekarang yang dipotong celah antar baris, dan celah terlebar menang; di ruangan seragam
+semua celahnya sama, jadi seri diputus oleh keseimbangan supaya potongannya jatuh di
+tengah alih-alih di tepi.
+
+Selama tabelnya belum terisi — model belum ditarik ulang oleh add-in yang membacanya —
+batas grouping jatuh ke kerapatan seperti sebelumnya, dan layar menyebutkan itu apa
+adanya. Diam-diam kembali ke tebakan tanpa memberi tahu adalah bagaimana kesalahan ini
+tidak ketahuan sejak awal.
+
 ### Urutan sambungan diukur di petak, bukan di milimeter
 
 Pola silang harus bertahan seberapa pun lebar jarak antar lampu. Diukur dalam

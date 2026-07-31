@@ -121,6 +121,16 @@ export function WiringPanel({
           )}
 
           {/*
+            Jumlah grouping datang dari saklar di model, bukan dari kerapatan lampu.
+            Kalau datanya belum ada, itu disebutkan — bukan didiamkan: batas grouping
+            yang disimpulkan dari jarak akan melebur dua ruangan yang dipisah dinding
+            tipis, dan gejalanya cuma garis yang menyeberang tanpa alasan yang terlihat.
+          */}
+          {plan && plan.rooms.length > 0 && plan.rooms.every((room) => room.switches === 0) ? (
+            <Notice tone="warn">{t('noSwitchData')}</Notice>
+          ) : null}
+
+          {/*
             Warna tiap saklar, beserta jumlah titik yang dipikulnya. Angka itu yang
             memberi tahu pembagiannya merata atau tidak — di ruangan berjumlah titik
             ganjil, satu kaki memang selalu kebagian satu lebih banyak.
@@ -180,6 +190,9 @@ export function WiringPanel({
                   <li key={room.key} className="flex items-center gap-2 py-2 first:pt-0 last:pb-0">
                     <span className="min-w-0 flex-1 truncate text-[13px]">
                       {room.name ?? t('roomUnnamed', {number: index + 1})}
+                      {room.split ? (
+                        <span className="ml-1.5 text-[11px] text-muted">{t('roomSplit')}</span>
+                      ) : null}
                     </span>
                     {room.inferred ? (
                       <TriangleAlert className="size-3.5 shrink-0 text-warn" aria-label={t('inferred')} />

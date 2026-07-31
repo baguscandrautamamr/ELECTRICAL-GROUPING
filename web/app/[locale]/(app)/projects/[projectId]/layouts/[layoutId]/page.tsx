@@ -5,7 +5,15 @@ import {notFound} from 'next/navigation';
 import {Badge, Empty} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import {Link} from '@/i18n/navigation';
-import type {Circuit, Device, Layout, LayoutDevice, Panel, SymbolOverride} from '@/lib/contract';
+import type {
+  Circuit,
+  Device,
+  Layout,
+  LayoutDevice,
+  LightingDevice,
+  Panel,
+  SymbolOverride
+} from '@/lib/contract';
 import {firstProblem, optional} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 import {PlanView} from './plan-view';
@@ -77,7 +85,8 @@ export default async function PlanPage({params}: Params) {
   // Isi denah ditentukan view Revit-nya, bukan pasangan (level, kind): satu lantai bisa
   // punya denah lighting dan denah emergency/exit sekaligus, dan keduanya berlantai serta
   // berjenis sama. `layout_devices` yang membedakannya.
-  const [project, devices, members, anyMember, panels, circuits, overrides] = await Promise.all([
+  const [project, devices, members, anyMember, panels, circuits, overrides, switches] =
+    await Promise.all([
     supabase.from('projects').select('id, name').eq('id', projectId).maybeSingle(),
     allDevicesOfKind(supabase, projectId, layout.kind),
     supabase
@@ -96,7 +105,15 @@ export default async function PlanPage({params}: Params) {
       .eq('project_id', projectId)
       .eq('kind', layout.kind)
       .order('created_at'),
-    supabase.from('symbol_overrides').select('*').eq('project_id', projectId)
+    supabase.from('symbol_overrides').select('*').eq('project_id', projectId),
+    // Saklar di lantai ini. Jumlahnya per ruangan memecah lampu jadi sebanyak itu
+    // grouping — lihat `lib/wiring.ts`. Tabelnya dari migrasi yang lebih baru, jadi
+    // dibaca lewat `optional()`.
+    supabase
+      .from('lighting_devices')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('level_key', layout.level_key)
   ]);
 
   // `layout_devices` datang dari migrasi yang lebih baru. Belum diterapkan berarti
@@ -137,6 +154,8 @@ export default async function PlanPage({params}: Params) {
     circuit.device_unique_ids.some((id) => onThisLayout.has(id))
   );
 
+  const lightingDevices = (optional(switches) ?? []) as LightingDevice[];
+
   const symbolOverrides = Object.fromEntries(
     ((overrides.data ?? []) as SymbolOverride[]).map((row) => [row.family_key, row.symbol])
   );
@@ -166,6 +185,7 @@ export default async function PlanPage({params}: Params) {
           panels={(panels.data ?? []) as Panel[]}
           circuits={circuitRows}
           symbolOverrides={symbolOverrides}
+          lightingDevices={lightingDevices}
         />
       )}
     </div>
