@@ -337,99 +337,80 @@ function gridOf(bands: readonly Device[][], columns: Map<string, number>): Grid 
   };
 }
 
-/**
- * Pembagian saklar: papan catur murni, `(baris + kolom) % jumlah saklar`.
- *
- * Berlaku untuk **seluruh** kolom, tanpa kecuali. Percobaan sebelumnya
- * memperlakukan kolom ganjil yang tidak kebagian pasangan sebagai satu blok dan
- * menempelkannya utuh ke satu kaki; hasilnya kolom itu jadi satu garis tegak yang
- * menyambung empat lampu beruntun, padahal yang diminta justru selang-seling.
- *
- * Gaya gambar tidak ikut menentukan pembagian ini. Lampu mana ikut saklar mana
- * adalah urusan listrik, dan tidak boleh berubah hanya karena bentuk garisnya
- * diganti.
- */
-function legsOf(grid: Grid, switches: number): Cell[][] {
-  const legs: Cell[][] = Array.from({length: switches}, () => []);
-
-  for (let row = 0; row < grid.rows; row++) {
-    for (let column = 0; column < grid.columns; column++) {
-      const device = grid.at(row, column);
-      if (device) legs[(row + column) % switches]!.push({device, row, column});
-    }
-  }
-
-  return legs;
-}
-
 /** Satu lampu beserta letaknya di petak ruangan. */
 type Cell = {device: Device; row: number; column: number};
 
 /**
- * Urutan sambungan satu kaki: tetangga terdekat **di ruang petak**, bukan di
- * milimeter.
+ * Urutan sambungan satu kaki, mengikuti cara baris dihabiskan berpasangan.
  *
- * Ini yang membuat pola silang bertahan seberapa pun lebar jarak antar lampu.
- * Diukur dalam milimeter, ruangan yang lebar mendatar membuat tetangga diagonal
- * berjarak hampir selebar satu kolom, sedangkan lampu sewarna di kolom yang sama
- * dua baris di bawahnya jauh lebih dekat — jadi urutannya melompat tegak dulu, dan
- * silangnya berubah jadi sapuan panjang melintasi ruangan. Di ruang petak,
- * diagonal selalu berjarak akar 2 dan lompatan dua baris selalu 2, apa pun bentuk
- * ruangannya.
+ * "Baris" di sini deretan lampu **tegak**. Baris dihabiskan dua-dua: (1,2), lalu
+ * (3,4), dan seterusnya. Tiap pasangan menyilang — di dalam satu pasangan, kaki ini
+ * mengambil sisi kiri di lampu ganjil dan sisi kanan di lampu genap, jadi urutan
+ * turunnya membentuk X. Baris yang tidak kebagian pasangan dikerjakan terakhir.
  *
- * Lompatan yang lebih jauh tetap muncul, dan memang tidak bisa dihindari: di
- * ruangan tiga kolom, lampu sewarna di pojok kiri atas dan pojok kanan atas
- * masing-masing cuma punya satu tetangga diagonal, dan tetangganya sama. Dua ujung
- * buntu yang menempel ke titik yang sama — satu garis hanya boleh punya dua ujung,
- * jadi sisanya pasti butuh sambungan bukan-diagonal. Sambungan itulah yang nanti
- * dirutekan memutar.
+ * Pembagian saklarnya papan catur `(baris + kolom) % jumlah saklar`, dan itu berlaku
+ * di baris sisa juga: lampu ke-1, ke-3, ke-5 ke satu saklar, ke-2 dan ke-4 ke saklar
+ * lain. Akibatnya dua lampu sewarna di baris sisa selalu terpisah satu lampu, dan
+ * garisnya wajib memutar untuk melompatinya — itulah zigzag di baris sisa.
+ *
+ * Percobaan sebelumnya memilih sambungan lewat tetangga terdekat tanpa mengenal
+ * pasangan sama sekali. Hasilnya bentuk chevron yang menyapu seluruh ruangan: benar
+ * menurut papan catur, tapi bukan silang per pasangan seperti gambar acuan.
  */
-function orderLeg(cells: readonly Cell[]): Cell[] {
-  if (cells.length < 2) return [...cells];
+function orderLeg(grid: Grid, switchIndex: number, switches: number): Cell[] {
+  const mine = (row: number, column: number): Cell | null => {
+    const device = grid.at(row, column);
+    if (!device || (row + column) % switches !== switchIndex) return null;
+    return {device, row, column};
+  };
 
-  const remaining = [...cells];
+  const segments: Cell[][] = [];
+  let column = 0;
 
-  // Kiri atas sebagai pangkal supaya urutannya stabil antar muat ulang.
-  let bestStart = 0;
-  remaining.forEach((cell, index) => {
-    const best = remaining[bestStart]!;
-    if (cell.row < best.row || (cell.row === best.row && cell.column < best.column)) {
-      bestStart = index;
-    }
-  });
-
-  const ordered: Cell[] = [remaining.splice(bestStart, 1)[0]!];
-
-  while (remaining.length > 0) {
-    const from = ordered[ordered.length - 1]!;
-
-    let pick = 0;
-    let bestDistance = Infinity;
-
-    remaining.forEach((candidate, index) => {
-      const gap = Math.hypot(candidate.row - from.row, candidate.column - from.column);
-
-      // Seri diputus baris teratas lalu kolom terkiri — bukan urutan kedatangan,
-      // yang bergantung pada urutan baris dari database.
-      const chosen = remaining[pick]!;
-      const better =
-        gap < bestDistance - EPSILON ||
-        (Math.abs(gap - bestDistance) < EPSILON &&
-          (candidate.row < chosen.row ||
-            (candidate.row === chosen.row && candidate.column < chosen.column)));
-
-      if (better) {
-        bestDistance = gap;
-        pick = index;
+  for (; column + 1 < grid.columns; column += 2) {
+    const segment: Cell[] = [];
+    for (let row = 0; row < grid.rows; row++) {
+      // Di dalam satu pasangan, satu baris hanya menyumbang satu lampu ke kaki ini —
+      // itulah yang membuat urutannya berpindah sisi tiap turun, alias menyilang.
+      for (const side of [column, column + 1]) {
+        const cell = mine(row, side);
+        if (cell) segment.push(cell);
       }
-    });
+    }
+    if (segment.length > 0) segments.push(segment);
+  }
 
-    ordered.push(remaining.splice(pick, 1)[0]!);
+  // Baris sisa, kalau jumlah barisnya ganjil.
+  if (column < grid.columns) {
+    const segment: Cell[] = [];
+    for (let row = 0; row < grid.rows; row++) {
+      const cell = mine(row, column);
+      if (cell) segment.push(cell);
+    }
+    if (segment.length > 0) segments.push(segment);
+  }
+
+  const ordered: Cell[] = [];
+
+  for (const segment of segments) {
+    const previous = ordered[ordered.length - 1];
+
+    // Segmen berikutnya dimasuki dari ujung yang paling dekat. Tanpa ini, kaki yang
+    // selesai di bawah harus melompat ke puncak baris sisa dan garis sambungnya
+    // memotong seluruh ruangan.
+    if (previous) {
+      const head = segment[0]!;
+      const tail = segment[segment.length - 1]!;
+      const toHead = Math.hypot(head.row - previous.row, head.column - previous.column);
+      const toTail = Math.hypot(tail.row - previous.row, tail.column - previous.column);
+      if (toTail < toHead) segment.reverse();
+    }
+
+    ordered.push(...segment);
   }
 
   return ordered;
 }
-
 
 function push(into: Point[], point: Point) {
   const last = into[into.length - 1];
@@ -538,7 +519,8 @@ function routeAvoiding(
   occupied: readonly Segment[],
   detour: number,
   chamfer: number,
-  style: WireStyle
+  style: WireStyle,
+  centerX: number
 ): Point[] {
   if (points.length < 2) return [...points];
 
@@ -614,16 +596,29 @@ function routeAvoiding(
 
     // Silang menyambung diagonal dengan garis lurus; siku selalu tegak-datar.
     const direct = style === 'crossing' ? [from, to] : routeChamfer([from, to], chamfer);
-    const candidates = [direct, aroundRoute(from, to, detour, -1), aroundRoute(from, to, detour, 1)];
+
+    // Sisi luar ruangan didahulukan saat seri: di luar hampir selalu kosong, sedangkan
+    // ke arah tengah menunggu deretan lampu berikutnya.
+    const outward: -1 | 1 = from.x <= centerX ? -1 : 1;
+    const candidates = [
+      {route: direct, bias: 0},
+      {route: aroundRoute(from, to, detour, outward), bias: 0},
+      {route: aroundRoute(from, to, detour, outward === -1 ? 1 : -1), bias: 0.5}
+    ];
 
     let chosen = direct;
     let bestScore = Infinity;
 
     for (const candidate of candidates) {
-      const score = hits(candidate) * 1e9 + overlap(candidate) * 1e4 + length(candidate) / spacing;
+      const score =
+        hits(candidate.route) * 1e9 +
+        overlap(candidate.route) * 1e4 +
+        length(candidate.route) / spacing +
+        candidate.bias;
+
       if (score < bestScore - EPSILON) {
         bestScore = score;
-        chosen = candidate;
+        chosen = candidate.route;
       }
     }
 
@@ -725,12 +720,17 @@ export function planWiring(devices: readonly Device[], options: WiringOptions): 
     // bisa dibaca sebagai dua sirkuit yang berbeda.
     const occupied: Segment[] = [];
 
-    legsOf(grid, switches).forEach((members, switchIndex) => {
+    // Titik tengah ruangan, dipakai memutuskan arah mana yang "ke luar" saat memutar.
+    const centerX =
+      room.devices.reduce((sum, device) => sum + device.x_mm, 0) / Math.max(1, room.devices.length);
+
+    for (let switchIndex = 0; switchIndex < switches; switchIndex++) {
+      const leg = orderLeg(grid, switchIndex, switches).map((cell) => cell.device);
+
       // Ruangan berisi satu lampu tidak bisa dibagi dua; kaki yang kosong dibuang
       // daripada muncul sebagai garis tanpa panjang.
-      if (members.length < 2) return;
+      if (leg.length < 2) continue;
 
-      const leg = orderLeg(members).map((cell) => cell.device);
       const own = new Set(leg.map((device) => device.revit_unique_id));
 
       runs.push({
@@ -745,10 +745,11 @@ export function planWiring(devices: readonly Device[], options: WiringOptions): 
           occupied,
           spacing * DETOUR_RATIO,
           chamfer,
-          options.style
+          options.style,
+          centerX
         )
       });
-    });
+    }
   }
 
   return {rooms, runs, spacing};
