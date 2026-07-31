@@ -144,7 +144,15 @@
     "noSwitchData": "The model carries no switch data yet, so grouping boundaries are still inferred from lamp spacing. Push the model again from the add-in so the count comes from the lighting devices in each room.",
     "roomSplit": "· split",
     "noRooms": "No points on this plan can be wired yet.",
-    "previewOnly": "Preview only. These lines are not saved and have not been sent to Revit."
+    "previewOnly": "Preview only. These lines are not saved and have not been sent to Revit.",
+    "chooseLineStyle": "Pick a line style",
+    "noSwitchOnLayout": "This plan has no switches, so grouping boundaries here are inferred from lamp spacing. If Revit does have them, check whether the Lighting Devices category is visible in this view.",
+    "sendRuns": "{count, plural, =0 {Send lines to Revit} other {Send # legs to Revit}}",
+    "sendNeedsSelection": "Pick points on the plan first — what gets sent is your selection, not the whole floor.",
+    "sendNeedsWholeRun": "No switch leg is fully selected yet. Widen the selection until a whole leg is inside, so the lines in Revit match what you see here.",
+    "sendNeedsLineStyle": "Pick a line style first; the add-in uses it as the line style in the model.",
+    "sendPartial": "{count, plural, other {# legs skipped because only part of their points are selected.}}",
+    "sent": "{count, plural, other {# legs queued. Fetch the plan from the add-in to draw them.}}"
   },
   "circuits": {
     "heading": "Circuits",

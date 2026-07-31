@@ -189,6 +189,109 @@ begin
 end;
 $$;
 
+-- ------------------------------------------------ layout, line style, antre wiring
+--
+-- Saklar dibatasi per layout, bukan per lantai. Satu lantai bisa punya denah lighting
+-- dan denah emergency/exit sekaligus; keduanya `level_key` sama, jadi tanpa tabel
+-- keanggotaan ini kedua halaman menerima seluruh saklar lantai itu.
+
+insert into public.layouts (project_id, revit_unique_id, name, kind, level_key, scale, sort_order)
+values (:pid, 'view-lighting', 'L1 - LIGHTING PLAN', 'lighting', 'L1', 100, 0),
+       (:pid, 'view-emergency', 'L1 - EMERGENCY & EXIT PLAN', 'lighting', 'L1', 100, 1);
+
+-- sw-1 hanya tampak di denah lighting biasa. Denah emergency tidak boleh kebagian.
+insert into public.layout_lighting_devices (project_id, layout_unique_id, lighting_device_unique_id)
+values (:pid, 'view-lighting', 'sw-1'),
+       (:pid, 'view-lighting', 'sw-2');
+
+insert into public.line_styles (project_id, revit_unique_id, name, sort_order)
+values (:pid, 'gs-lighting', 'LIGHTING', 0),
+       (:pid, 'gs-receptacle', 'RECEPTACLE', 1);
+
+do $$
+begin
+  assert (select count(*) from public.layout_lighting_devices
+           where layout_unique_id = 'view-lighting') = 2,
+         'keanggotaan saklar di denah lighting tidak terbaca';
+  assert (select count(*) from public.layout_lighting_devices
+           where layout_unique_id = 'view-emergency') = 0,
+         'saklar denah lighting ikut jatuh ke denah emergency';
+end;
+$$;
+
+-- Cascade: saklar yang tersapu snapshot harus membawa keanggotaannya.
+do $$
+begin
+  delete from public.lighting_devices
+   where project_id = 'cccccccc-0000-4000-8000-000000000003' and revit_unique_id = 'sw-2';
+
+  assert (select count(*) from public.layout_lighting_devices
+           where lighting_device_unique_id = 'sw-2') = 0,
+         'keanggotaan yatim tertinggal setelah saklarnya dihapus';
+end;
+$$;
+
+-- queue_wiring: satu job wiring, tanpa menyentuh circuit mana pun.
+do $$
+declare
+  v_job uuid;
+  v_runs jsonb := jsonb_build_array(
+    jsonb_build_object('switch_index', 0, 'vertices', jsonb_build_array(
+      jsonb_build_object('x_mm', 1000, 'y_mm', 2000),
+      jsonb_build_object('x_mm', 1600, 'y_mm', 2000))));
+begin
+  v_job := public.queue_wiring(
+    'cccccccc-0000-4000-8000-000000000003', 'view-lighting', 'gs-lighting', v_runs);
+
+  assert v_job is not null, 'queue_wiring tidak mengembalikan job';
+  assert (select count(*) from public.sync_jobs
+           where direction = 'wiring' and status = 'queued') = 1,
+         'job wiring tidak dibuat';
+  assert (select payload -> 'line_style_unique_id' from public.sync_jobs where id = v_job)
+           = '"gs-lighting"'::jsonb,
+         'line style tidak ikut di payload';
+
+  -- Garis wiring bukan circuit: statusnya tidak boleh ikut berpindah.
+  assert (select count(*) from public.circuits where status = 'queued') = 1,
+         'queue_wiring menyentuh status circuit';
+end;
+$$;
+
+-- Tiga penolakan: tanpa garis, layout asing, line style asing. Payload jsonb tidak
+-- dijaga foreign key, jadi validasinya harus hidup di dalam fungsi.
+do $$
+declare
+  v_runs jsonb := jsonb_build_array(
+    jsonb_build_object('switch_index', 0, 'vertices', jsonb_build_array(
+      jsonb_build_object('x_mm', 0, 'y_mm', 0))));
+  v_failed boolean;
+begin
+  v_failed := false;
+  begin
+    perform public.queue_wiring('cccccccc-0000-4000-8000-000000000003',
+      'view-lighting', 'gs-lighting', '[]'::jsonb);
+  exception when others then v_failed := true;
+  end;
+  assert v_failed, 'queue_wiring menerima daftar garis kosong';
+
+  v_failed := false;
+  begin
+    perform public.queue_wiring('cccccccc-0000-4000-8000-000000000003',
+      'view-entah', 'gs-lighting', v_runs);
+  exception when others then v_failed := true;
+  end;
+  assert v_failed, 'queue_wiring menerima layout yang bukan milik project';
+
+  v_failed := false;
+  begin
+    perform public.queue_wiring('cccccccc-0000-4000-8000-000000000003',
+      'view-lighting', 'gs-entah', v_runs);
+  exception when others then v_failed := true;
+  end;
+  assert v_failed, 'queue_wiring menerima line style yang bukan milik project';
+end;
+$$;
+
 -- ---------------------------------------------------------------- user B
 set request.jwt.claim.sub = 'bbbbbbbb-0000-4000-8000-000000000002';
 
@@ -229,6 +332,26 @@ begin
 
   -- Saklar bocor berarti pembagian grouping ikut bocor.
   assert (select count(*) from public.lighting_devices) = 0, 'B melihat saklar project orang lain';
+  assert (select count(*) from public.layout_lighting_devices) = 0,
+         'B melihat keanggotaan saklar project orang lain';
+  assert (select count(*) from public.line_styles) = 0, 'B melihat line style project orang lain';
+end;
+$$;
+
+-- queue_wiring berjalan sebagai pemanggilnya. B bukan anggota, jadi layout-nya tidak
+-- terlihat dan fungsinya harus menolak — bukan menyisipkan job ke project orang lain.
+do $$
+declare
+  v_failed boolean := false;
+begin
+  begin
+    perform public.queue_wiring('cccccccc-0000-4000-8000-000000000003',
+      'view-lighting', 'gs-lighting',
+      jsonb_build_array(jsonb_build_object('switch_index', 0, 'vertices',
+        jsonb_build_array(jsonb_build_object('x_mm', 0, 'y_mm', 0)))));
+  exception when others then v_failed := true;
+  end;
+  assert v_failed, 'B bisa mengantre gambar garis ke project orang lain';
 end;
 $$;
 

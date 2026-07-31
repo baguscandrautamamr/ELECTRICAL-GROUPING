@@ -1,25 +1,44 @@
 'use client';
 
-import {ChevronDown, ChevronRight, TriangleAlert} from 'lucide-react';
+import {ChevronDown, ChevronRight, Send, TriangleAlert} from 'lucide-react';
 import {useTranslations} from 'next-intl';
 import {useMemo} from 'react';
-import {Badge, Notice, Select} from '@/components/ui';
+import {Badge, Button, Notice, Select} from '@/components/ui';
+import type {LineStyle} from '@/lib/contract';
 import {switchStyleFor} from '@/lib/symbols';
 import {WIRE_STYLES, type WireStyle, type WiringOptions, type WiringPlan} from '@/lib/wiring';
+
+/** Apa yang bisa dikirim dari pilihan di denah, dan apa yang menghalanginya. */
+export type WiringSend = {
+  /** Kaki saklar yang seluruh titiknya terpilih. Hanya ini yang dikirim. */
+  runs: number;
+  /** Kaki yang cuma sebagian terpilih, jadi dilewati. */
+  partial: number;
+  selected: number;
+  sending: boolean;
+  onSend: () => void;
+  feedback: {tone: 'ok' | 'danger'; text: string} | null;
+};
 
 /**
  * Kontrol wiring per ruangan.
  *
- * Presentasi saja: seluruh pilihan hidup di halaman denah, dan hitungannya di
- * `lib/wiring.ts`. Komponen ini tidak menyentuh state seleksi, circuit, maupun panel —
- * membuka atau menutupnya tidak bisa memengaruhi grouping yang sedang dikerjakan.
+ * Presentasi saja: seluruh pilihan hidup di halaman denah, hitungannya di
+ * `lib/wiring.ts`, dan pengirimannya di server action. Komponen ini tidak menyentuh
+ * state seleksi, circuit, maupun panel — membuka atau menutupnya tidak bisa memengaruhi
+ * grouping yang sedang dikerjakan.
  */
 export function WiringPanel({
   open,
   onToggle,
   options,
   onOptionsChange,
-  plan
+  plan,
+  lineStyles,
+  lineStyleId,
+  onLineStyleChange,
+  switchDataMissing,
+  send
 }: {
   open: boolean;
   onToggle: () => void;
@@ -27,6 +46,13 @@ export function WiringPanel({
   onOptionsChange: (next: WiringOptions) => void;
   /** Null selagi section tertutup — tidak ada gunanya menghitung yang tidak dilihat. */
   plan: WiringPlan | null;
+  /** Line style dari model. Kosong berarti add-in belum pernah mengirimnya. */
+  lineStyles: LineStyle[];
+  lineStyleId: string;
+  onLineStyleChange: (id: string) => void;
+  /** Benar kalau project ini belum punya data saklar sama sekali. */
+  switchDataMissing: boolean;
+  send: WiringSend;
 }) {
   const t = useTranslations('wiring');
 
@@ -76,15 +102,83 @@ export function WiringPanel({
           <p className="text-[12px] leading-relaxed text-muted">{t('intro')}</p>
 
           {/*
-            Line style hidup di model Revit, dan belum ada tabel yang membawanya ke
-            sini. Dropdown-nya tetap ditampilkan dalam keadaan mati: yang kosong dan
-            disebutkan alasannya lebih jujur daripada kontrol yang belum ada sama
-            sekali, karena pratinjau memang tidak butuh style untuk menggambar.
+            Line style datang dari model — subcategory kategori OST_Lines, yang di Revit
+            ada di dialog Line Styles. Daftarnya tidak pernah dikarang di sini: add-in
+            harus menemukan style yang sama lewat UniqueId-nya untuk dipasang ke garis
+            yang digambar.
+
+            Pratinjau tetap tidak butuh style untuk menggambar; yang butuh adalah
+            pengiriman ke Revit. Karena itu dropdown-nya mati hanya kalau modelnya
+            memang belum membawa apa pun.
           */}
-          <Select label={t('lineStyle')} value="" disabled onChange={() => {}}>
-            <option value="">{t('lineStyleEmpty')}</option>
-          </Select>
-          <p className="text-[12px] leading-relaxed text-muted">{t('lineStyleHint')}</p>
+          <div className="space-y-2">
+            <Select
+              label={t('lineStyle')}
+              value={lineStyleId}
+              disabled={lineStyles.length === 0}
+              onChange={(event) => onLineStyleChange(event.target.value)}
+            >
+              {lineStyles.length === 0 ? (
+                <option value="">{t('lineStyleEmpty')}</option>
+              ) : (
+                <>
+                  <option value="">{t('chooseLineStyle')}</option>
+                  {lineStyles.map((style) => (
+                    <option key={style.revit_unique_id} value={style.revit_unique_id}>
+                      {style.name}
+                    </option>
+                  ))}
+                </>
+              )}
+            </Select>
+
+            {lineStyles.length === 0 ? (
+              <p className="text-[12px] leading-relaxed text-muted">{t('lineStyleHint')}</p>
+            ) : null}
+
+            {/*
+              Yang dikirim adalah pilihan di denah, bukan seluruh lantai — user yang
+              memutuskan bagian mana yang sudah siap masuk model. Tombolnya di sini,
+              bersama line style-nya, karena keduanya satu keputusan.
+            */}
+            <Button
+              tone="secondary"
+              disabled={send.sending || send.runs === 0 || lineStyleId.length === 0}
+              onClick={send.onSend}
+            >
+              <Send className="size-4" aria-hidden />
+              {t('sendRuns', {count: send.runs})}
+            </Button>
+
+            {/*
+              Satu alasan saja yang ditampilkan, yang paling depan dalam urutan kerja:
+              pilih titik → pilih style → kirim. Menyebutkan semuanya sekaligus membuat
+              user membaca daftar syarat, bukan langkah berikutnya.
+            */}
+            {send.runs === 0 ? (
+              <p className="text-[12px] leading-relaxed text-muted">
+                {send.selected === 0 ? t('sendNeedsSelection') : t('sendNeedsWholeRun')}
+              </p>
+            ) : lineStyleId.length === 0 ? (
+              <p className="text-[12px] leading-relaxed text-muted">{t('sendNeedsLineStyle')}</p>
+            ) : null}
+
+            {/*
+              Kaki yang cuma sebagian terpilih dilewati, dan itu disebutkan. Garis yang
+              dipotong di tengah akan tergambar di Revit sebagai sesuatu yang tidak pernah
+              terlihat di pratinjau — dan diam-diam melewatinya adalah bagaimana
+              "kok cuma sebagian yang terkirim" jadi pertanyaan tanpa jawaban.
+            */}
+            {send.partial > 0 ? (
+              <p className="text-[12px] leading-relaxed text-muted">
+                {t('sendPartial', {count: send.partial})}
+              </p>
+            ) : null}
+
+            {send.feedback ? (
+              <Notice tone={send.feedback.tone}>{send.feedback.text}</Notice>
+            ) : null}
+          </div>
 
           <Select
             label={t('style')}
@@ -126,8 +220,20 @@ export function WiringPanel({
             yang disimpulkan dari jarak akan melebur dua ruangan yang dipisah dinding
             tipis, dan gejalanya cuma garis yang menyeberang tanpa alasan yang terlihat.
           */}
-          {plan && plan.rooms.length > 0 && plan.rooms.every((room) => room.switches === 0) ? (
+          {switchDataMissing && plan && plan.rooms.length > 0 ? (
             <Notice tone="warn">{t('noSwitchData')}</Notice>
+          ) : null}
+
+          {/*
+            Dua keadaan yang gejalanya sama tapi sebabnya berbeda, dan dulu keduanya
+            memakai kalimat yang satu: "model belum membawa data saklar". Kalimat itu
+            salah untuk denah yang saklarnya memang nol — misalnya denah emergency, yang
+            saklarnya tidak tampak di view-nya. Yang benar disebut di situ adalah bahwa
+            batas grouping denah **ini** jatuh ke kerapatan, bukan bahwa modelnya kurang.
+          */}
+          {!switchDataMissing && plan && plan.rooms.length > 0 &&
+          plan.rooms.every((room) => room.switches === 0) ? (
+            <Notice tone="warn">{t('noSwitchOnLayout')}</Notice>
           ) : null}
 
           {/*

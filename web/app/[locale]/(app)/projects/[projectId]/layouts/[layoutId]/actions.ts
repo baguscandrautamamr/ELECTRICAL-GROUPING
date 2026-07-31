@@ -1,11 +1,16 @@
 'use server';
 
+import type {WireRunPayload} from '@/lib/contract';
 import {isKind} from '@/lib/contract';
 import {createClient} from '@/lib/supabase/server';
 
 export type CircuitActionResult =
   | {ok: true}
   | {ok: false; reason: 'selection' | 'panel' | 'kind' | 'failed'};
+
+export type WiringActionResult =
+  | {ok: true}
+  | {ok: false; reason: 'selection' | 'lineStyle' | 'failed'};
 
 /**
  * Menyimpan usulan grouping sebagai circuit berstatus draft.
@@ -91,6 +96,41 @@ export async function queueApply(projectId: string, circuitIds: string[]): Promi
   const {error} = await supabase.rpc('queue_apply', {
     p_project: projectId,
     p_circuit_ids: circuitIds
+  });
+
+  return error ? {ok: false, reason: 'failed'} : {ok: true};
+}
+
+/**
+ * Mengantre gambar garis wiring untuk sebuah denah.
+ *
+ * Jalur yang sama seperti `queueApply`: web hanya menyisipkan satu baris `sync_jobs`,
+ * add-in yang mengambilnya. Yang berbeda isinya — bukan rencana circuit melainkan
+ * polyline yang titiknya sudah selesai dihitung di `lib/wiring.ts`. Add-in menggambar
+ * apa yang dikirim, jadi garis di Revit adalah angka yang identik dengan pratinjau.
+ *
+ * Tidak ada circuit yang ikut berpindah status di sini. Garis wiring bukan circuit: ia
+ * tidak punya panel, tidak punya nomor, dan tidak menyambungkan apa pun secara listrik.
+ *
+ * Layout dan line style diperiksa di dalam `queue_wiring` terhadap project yang sama.
+ * RLS menahan pembacaan baris project lain, tapi tidak menahan penyebutan id-nya di
+ * dalam payload jsonb — jadi yang menjaga itu fungsi database, bukan kode ini.
+ */
+export async function queueWiring(input: {
+  projectId: string;
+  layoutUniqueId: string;
+  lineStyleUniqueId: string;
+  runs: WireRunPayload[];
+}): Promise<WiringActionResult> {
+  if (input.runs.length === 0) return {ok: false, reason: 'selection'};
+  if (input.lineStyleUniqueId.length === 0) return {ok: false, reason: 'lineStyle'};
+
+  const supabase = await createClient();
+  const {error} = await supabase.rpc('queue_wiring', {
+    p_project: input.projectId,
+    p_layout: input.layoutUniqueId,
+    p_line_style: input.lineStyleUniqueId,
+    p_runs: input.runs
   });
 
   return error ? {ok: false, reason: 'failed'} : {ok: true};

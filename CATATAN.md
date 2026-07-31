@@ -727,6 +727,95 @@ jarak antar lampu di mana kedua kaki berjalan berdampingan. Keduanya memang keha
 lajur bebas di situ; memperbaikinya berarti menggeser lajur per ruas, bukan memilih
 salah satu dari dua sisi.
 
+### Setiap select yang tumbuh bersama model harus berhalaman
+
+PostgREST memotong setiap select di seribu baris. Tanpa error, tanpa tanda di jawabannya —
+yang terlihat hanyalah halaman yang isinya kurang.
+
+`allDevicesOfKind` sudah menangani itu untuk tabel `devices` sejak awal, tapi hanya untuk
+tabel itu. Yang tertinggal justru yang paling mudah melampaui seribu: `layout_devices`
+berisi satu baris per device yang tampak di sebuah denah, dan satu denah gudang bisa
+berisi lebih dari seribu lampu. Akibatnya keanggotaan terpotong, `deviceRows` menyaring
+dengan daftar yang kurang, dan denah kehilangan lampu — persis kegagalan yang
+`allDevicesOfKind` dibuat untuk mencegah, satu query di sebelahnya.
+
+Sekarang halamannya satu helper di `web/lib/supabase/pages.ts`, dipakai semua tabel yang
+tumbuh seiring besar model: device, keanggotaan layout, saklar, dan circuit. Panel dan
+override simbol tidak lewat sana — jumlahnya dibatasi bentuk project, bukan besar model.
+
+Helper itu **mewajibkan** `order` dari pemanggilnya. Tanpa urutan yang pasti, halaman
+kedua tidak dijamin melanjutkan halaman pertama: yang hilang bukan seribu baris terakhir
+melainkan baris sembarang, dan itu jauh lebih sulit dikenali daripada potongan di ujung.
+
+### Saklar dibatasi per view, bukan per lantai
+
+`layout_devices` membuat isi denah ditentukan view Revit. Saklarnya tertinggal: web masih
+menyaring `lighting_devices` dengan `level_key`.
+
+Akibatnya kebalikan dari yang diperbaiki `layout_devices`, dan lebih sunyi. Satu lantai
+dengan denah lighting dan denah emergency/exit punya `level_key` yang sama, jadi kedua
+halaman menerima seluruh saklar lantai itu. Tiap saklar lalu diberikan ke kumpulan lampu
+terdekat yang ada di halaman itu — sehingga denah emergency dipecah oleh saklar yang
+mengendalikan lampu biasa, dan sebaliknya. Device yang salah tempat akan terlihat sebagai
+simbol yang tidak semestinya ada; saklar yang salah tempat tidak terlihat sama sekali, ia
+hanya mengubah jumlah grouping.
+
+Tabelnya tidak bisa digabung ke `layout_devices`: foreign key di sana menunjuk `devices`,
+sedangkan saklar hidup di `lighting_devices`. Jadi `layout_lighting_devices`, dengan
+cascade dua arah yang sama.
+
+Satu hal yang ikut terbetulkan: peringatan "model belum membawa data saklar" dulu menyala
+kalau **setiap ruangan** di denah itu nol saklar. Kalimat itu salah untuk denah yang
+saklarnya memang nol — denah emergency, misalnya, yang kategori Lighting Devices-nya tidak
+tampak di view. Sekarang dua keadaan itu dua kalimat: yang satu tentang model yang belum
+ditarik ulang, yang lain tentang denah ini yang batas grouping-nya jatuh ke kerapatan.
+
+### Line style datang dari model, dan garis dikirim dari pilihan
+
+Dropdown line style di web dulu selalu kosong dan dimatikan, dengan komentar bahwa belum
+ada tabel yang membawanya. Sekarang ada: `line_styles`, isinya subcategory kategori
+`OST_Lines` — yang di Revit muncul di dialog Line Styles.
+
+Yang disimpan sebagai identitas adalah `UniqueId` GraphicsStyle-nya, bukan namanya. Nama
+line style bisa diubah user kapan saja, dan add-in harus tetap menemukan style yang sama
+saat menggambar.
+
+Pengirimannya jalur ketiga di `sync_jobs`, `direction = 'wiring'`, di samping `apply` dan
+`snapshot`. Sengaja bukan circuit: garis wiring tidak punya panel, tidak punya nomor, dan
+tidak menyambungkan apa pun secara listrik. Memaksanya lewat tabel `circuits` berarti
+mengarang panel untuk sesuatu yang tidak butuh panel.
+
+Payload-nya polyline yang titiknya sudah selesai dihitung di `web/lib/wiring.ts` dan
+dipakai add-in apa adanya. Itu memegang janji yang sudah tertulis di kepala berkas itu:
+yang tergambar di Revit bukan mirip pratinjau, melainkan angka yang identik. Karena itu
+juga algoritmanya tidak boleh dikembarkan di C#.
+
+**Detail curve, bukan model curve.** Garis wiring adalah anotasi denah: ia hidup di satu
+view, ikut skalanya, dan tidak boleh muncul di view lain atau di 3D.
+
+**Yang dikirim adalah kaki yang utuh terpilih.** Kaki yang cuma sebagian terpilih
+dilewati, bukan dipotong. Garis yang dipotong di tengah akan tergambar di Revit sebagai
+sesuatu yang tidak pernah dilihat siapa pun di pratinjau — dan itu melanggar janji di
+atas. Jumlah yang dilewati disebutkan di panel, karena diam-diam melewatinya adalah
+bagaimana "kok cuma sebagian yang terkirim" jadi pertanyaan tanpa jawaban.
+
+Ruas yang lebih pendek daripada `Application.ShortCurveTolerance` dibuang sebelum
+digambar. Toleransi itu dibaca dari Revit, bukan ditulis sebagai angka: menebaknya salah
+di satu sisi — terlalu kecil menghasilkan exception, terlalu besar membuang ruas yang sah.
+Ambang `EPSILON` di `wiring.ts` jauh di bawah toleransi Revit, jadi penyaringan di web
+saja tidak cukup.
+
+### Yang masih harus diuji manual di Revit 2025
+
+`WiringApplier` menaruh detail curve di elevasi `ViewPlan.GenLevel.ProjectElevation`.
+Detail curve harus sebidang dengan view-nya, dan denah yang levelnya bukan di elevasi nol
+akan menolak kurva di Z=0 — itu alasan elevasinya diambil dari level, bukan dikira nol.
+Yang belum terbukti adalah apakah Revit 2025 menerima bidang itu apa adanya untuk setiap
+ViewPlan, termasuk ceiling plan dan denah yang view range-nya digeser.
+
+Compile-nya dijamin CI; perilakunya tidak. Kalau `NewDetailCurve` menolak dengan keluhan
+soal bidang, yang perlu diubah hanya elevasi di `PointOf` — bukan bentuk garisnya.
+
 ---
 
 ## Alat

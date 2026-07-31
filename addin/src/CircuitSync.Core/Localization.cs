@@ -139,6 +139,8 @@ public static class Translations
         ["log.rebuilt_one"] = "{0} dibangun ulang → {1}",
         ["log.apply_failed"] = "Circuit gagal diterapkan: {0}",
         ["log.job_error"] = "Rencana ditolak: {0}",
+        ["log.wiring_done"] = "Garis wiring digambar: {0} kaki saklar, {1} ruas",
+        ["log.wiring_detail"] = "Keterangan Revit: {0}",
         ["log.network"] = "Cloud tidak bisa dihubungi. Periksa koneksi lalu coba lagi.",
         ["log.missing_columns"] = "Database belum punya kolom {0}. Bagian itu dilewati; jalankan migrasi terbaru (supabase db push) lalu tarik ulang model.",
 
@@ -150,6 +152,12 @@ public static class Translations
         ["plan.kind_mismatch"] = "Jenis device tidak cocok dengan circuit",
         ["plan.device_in_two_circuits"] = "Device dipakai di dua circuit",
         ["plan.already_connected"] = "Device sudah tersambung ke circuit lain",
+
+        ["wiring.layout_missing"] = "Denah tujuan sudah tidak ada di model. Tarik ulang model lalu kirim lagi.",
+        ["wiring.layout_not_plan"] = "Denah tujuan bukan view denah, jadi garis tidak bisa digambar di sana.",
+        ["wiring.line_style_missing"] = "Line style pilihan sudah tidak ada di model. Tarik ulang model lalu pilih lagi.",
+        ["wiring.nothing_drawn"] = "Tidak ada garis yang bisa digambar dari kiriman itu.",
+        ["wiring.payload_unreadable"] = "Bentuk kiriman garis tidak dikenali add-in versi ini. Perbarui add-in-nya.",
 
         ["revit.command_tooltip"] = "Buka panel CircuitSync",
         ["revit.panel_name"] = "CircuitSync",
@@ -232,6 +240,8 @@ public static class Translations
         ["log.rebuilt_one"] = "{0} rebuilt → {1}",
         ["log.apply_failed"] = "Circuit could not be applied: {0}",
         ["log.job_error"] = "Plan rejected: {0}",
+        ["log.wiring_done"] = "Wiring drawn: {0} switch legs, {1} segments",
+        ["log.wiring_detail"] = "Revit said: {0}",
         ["log.network"] = "The cloud is unreachable. Check the connection and try again.",
         ["log.missing_columns"] = "The database does not have the {0} column yet. That part was skipped; run the latest migration (supabase db push), then push the model again.",
 
@@ -243,6 +253,12 @@ public static class Translations
         ["plan.kind_mismatch"] = "Device kind does not match the circuit",
         ["plan.device_in_two_circuits"] = "Device is used in two circuits",
         ["plan.already_connected"] = "Device is already on another circuit",
+
+        ["wiring.layout_missing"] = "That plan no longer exists in the model. Push the model again, then resend.",
+        ["wiring.layout_not_plan"] = "The target is not a plan view, so the lines cannot be drawn there.",
+        ["wiring.line_style_missing"] = "That line style no longer exists in the model. Push the model again, then pick another.",
+        ["wiring.nothing_drawn"] = "Nothing in that request could be drawn.",
+        ["wiring.payload_unreadable"] = "This add-in version does not recognise the shape of that request. Update the add-in.",
 
         ["revit.command_tooltip"] = "Open the CircuitSync panel",
         ["revit.panel_name"] = "CircuitSync",

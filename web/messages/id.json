@@ -144,7 +144,15 @@
     "noSwitchData": "Model belum membawa data saklar, jadi batas grouping masih dikira-kira dari jarak antar lampu. Tarik ulang model dari add-in supaya jumlah grouping datang dari lighting device di ruangan.",
     "roomSplit": "· pecahan",
     "noRooms": "Belum ada titik yang bisa di-wiring di denah ini.",
-    "previewOnly": "Masih pratinjau. Garis ini belum tersimpan dan belum dikirim ke Revit."
+    "previewOnly": "Masih pratinjau. Garis ini belum tersimpan dan belum dikirim ke Revit.",
+    "chooseLineStyle": "Pilih line style",
+    "noSwitchOnLayout": "Denah ini tidak punya saklar, jadi batas grouping di sini dikira-kira dari jarak antar lampu. Kalau di Revit sebenarnya ada, periksa apakah kategori Lighting Devices tampak di view ini.",
+    "sendRuns": "{count, plural, =0 {Kirim garis ke Revit} other {Kirim # kaki ke Revit}}",
+    "sendNeedsSelection": "Pilih dulu titik di denah — yang dikirim adalah bagian yang kamu pilih, bukan seluruh lantai.",
+    "sendNeedsWholeRun": "Belum ada kaki saklar yang terpilih utuh. Perluas pilihannya sampai satu kaki penuh masuk, supaya garis di Revit sama dengan yang terlihat di sini.",
+    "sendNeedsLineStyle": "Pilih line style dulu; add-in memakainya sebagai gaya garis di model.",
+    "sendPartial": "{count, plural, other {# kaki dilewati karena cuma sebagian titiknya terpilih.}}",
+    "sent": "{count, plural, other {# kaki terkirim ke antrean. Ambil rencana dari add-in untuk menggambarnya.}}"
   },
   "circuits": {
     "heading": "Circuit",

@@ -10,11 +10,14 @@ import type {
   Device,
   Layout,
   LayoutDevice,
+  LayoutLightingDevice,
   LightingDevice,
+  LineStyle,
   Panel,
   SymbolOverride
 } from '@/lib/contract';
 import {firstProblem, optional} from '@/lib/supabase/errors';
+import {allRows} from '@/lib/supabase/pages';
 import {createClient} from '@/lib/supabase/server';
 import {PlanView} from './plan-view';
 
@@ -31,37 +34,24 @@ async function loadLayout(projectId: string, layoutId: string) {
     .maybeSingle();
 }
 
-/** Sekali ambil bisa memuat paling banyak seribu baris di PostgREST. */
-const PAGE = 1000;
-
 /**
- * Seluruh device satu jenis dalam project, berapa pun jumlahnya.
- *
- * Tanpa halaman, model besar terpotong di seribu baris — tanpa error, tanpa tanda,
- * dan yang terlihat hanyalah denah yang kekurangan titik. Penyaringan per layout
- * terjadi setelah ini, jadi daftar ini memang harus utuh.
+ * Seluruh device satu jenis dalam project. Penyaringan per layout terjadi setelah ini,
+ * jadi daftar ini memang harus utuh.
  */
-async function allDevicesOfKind(
+function allDevicesOfKind(
   supabase: Awaited<ReturnType<typeof createClient>>,
   projectId: string,
   kind: string
 ) {
-  const rows: Device[] = [];
-
-  for (let from = 0; ; from += PAGE) {
-    const {data, error} = await supabase
+  return allRows<Device>((from, to) =>
+    supabase
       .from('devices')
       .select('*')
       .eq('project_id', projectId)
       .eq('kind', kind)
       .order('revit_unique_id')
-      .range(from, from + PAGE - 1);
-
-    if (error) return {data: null, error};
-
-    rows.push(...((data ?? []) as Device[]));
-    if ((data?.length ?? 0) < PAGE) return {data: rows, error: null};
-  }
+      .range(from, to)
+  );
 }
 
 export async function generateMetadata({params}: Params): Promise<Metadata> {
@@ -85,35 +75,83 @@ export default async function PlanPage({params}: Params) {
   // Isi denah ditentukan view Revit-nya, bukan pasangan (level, kind): satu lantai bisa
   // punya denah lighting dan denah emergency/exit sekaligus, dan keduanya berlantai serta
   // berjenis sama. `layout_devices` yang membedakannya.
-  const [project, devices, members, anyMember, panels, circuits, overrides, switches] =
-    await Promise.all([
+  const [
+    project,
+    devices,
+    members,
+    anyMember,
+    panels,
+    circuits,
+    overrides,
+    switches,
+    switchMembers,
+    anySwitchMember,
+    anySwitch,
+    lineStyles
+  ] = await Promise.all([
     supabase.from('projects').select('id, name').eq('id', projectId).maybeSingle(),
     allDevicesOfKind(supabase, projectId, layout.kind),
-    supabase
-      .from('layout_devices')
-      .select('device_unique_id')
-      .eq('project_id', projectId)
-      .eq('layout_unique_id', layoutKey),
+    allRows<LayoutDevice>((from, to) =>
+      supabase
+        .from('layout_devices')
+        .select('device_unique_id')
+        .eq('project_id', projectId)
+        .eq('layout_unique_id', layoutKey)
+        .order('device_unique_id')
+        .range(from, to)
+    ),
     // Membedakan "view ini memang kosong" dari "model ditarik add-in versi lama yang
     // belum mengirim keanggotaan sama sekali". Tanpa ini denah kosong yang sah akan
     // diam-diam jatuh ke perilaku lama dan menampilkan seluruh isi lantai.
     supabase.from('layout_devices').select('layout_unique_id').eq('project_id', projectId).limit(1),
     supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
-    supabase
-      .from('circuits')
-      .select('*')
-      .eq('project_id', projectId)
-      .eq('kind', layout.kind)
-      .order('created_at'),
+    allRows<Circuit>((from, to) =>
+      supabase
+        .from('circuits')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('kind', layout.kind)
+        .order('created_at')
+        .order('id')
+        .range(from, to)
+    ),
     supabase.from('symbol_overrides').select('*').eq('project_id', projectId),
     // Saklar di lantai ini. Jumlahnya per ruangan memecah lampu jadi sebanyak itu
     // grouping — lihat `lib/wiring.ts`. Tabelnya dari migrasi yang lebih baru, jadi
     // dibaca lewat `optional()`.
+    //
+    // Diambil per lantai, lalu disaring per layout di bawah. Lantai adalah jaring
+    // cadangan, bukan jawabannya: dua denah lighting di satu lantai punya `level_key`
+    // yang sama, jadi tanpa penyaringan itu keduanya menerima seluruh saklar lantai.
+    allRows<LightingDevice>((from, to) =>
+      supabase
+        .from('lighting_devices')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('level_key', layout.level_key)
+        .order('revit_unique_id')
+        .range(from, to)
+    ),
+    allRows<LayoutLightingDevice>((from, to) =>
+      supabase
+        .from('layout_lighting_devices')
+        .select('lighting_device_unique_id')
+        .eq('project_id', projectId)
+        .eq('layout_unique_id', layoutKey)
+        .order('lighting_device_unique_id')
+        .range(from, to)
+    ),
+    // Sama seperti `anyMember`, untuk saklar: "denah ini memang tidak punya saklar"
+    // berbeda dari "add-in belum pernah mengirim keanggotaan saklar".
     supabase
-      .from('lighting_devices')
-      .select('*')
+      .from('layout_lighting_devices')
+      .select('layout_unique_id')
       .eq('project_id', projectId)
-      .eq('level_key', layout.level_key)
+      .limit(1),
+    // Dan "project ini belum punya data saklar sama sekali" berbeda lagi: itu yang
+    // pantas dapat peringatan di panel wiring, bukan denah yang saklarnya memang nol.
+    supabase.from('lighting_devices').select('revit_unique_id').eq('project_id', projectId).limit(1),
+    supabase.from('line_styles').select('*').eq('project_id', projectId).order('sort_order')
   ]);
 
   // `layout_devices` datang dari migrasi yang lebih baru. Belum diterapkan berarti
@@ -131,9 +169,7 @@ export default async function PlanPage({params}: Params) {
   if (!project.data) notFound();
 
   const ofKind = (devices.data ?? []) as Device[];
-  const memberIds = new Set(
-    ((optional(members) ?? []) as LayoutDevice[]).map((row) => row.device_unique_id)
-  );
+  const memberIds = new Set((optional(members) ?? []).map((row) => row.device_unique_id));
 
   /**
    * Keanggotaan menang atas `level_key`. Level sebuah device tidak selalu bisa
@@ -154,7 +190,23 @@ export default async function PlanPage({params}: Params) {
     circuit.device_unique_ids.some((id) => onThisLayout.has(id))
   );
 
-  const lightingDevices = (optional(switches) ?? []) as LightingDevice[];
+  /**
+   * Saklar denah ini. Keanggotaan per view menang atas `level_key`, sama seperti pada
+   * device — dan di sini justru lebih penting: saklar yang jatuh ke denah yang salah tidak
+   * menampilkan apa pun yang keliru, ia hanya memecah lampu jadi jumlah grouping yang
+   * salah, tanpa peringatan.
+   *
+   * Selama keanggotaannya belum pernah dikirim, halaman kembali ke penyaringan per lantai —
+   * bukan mengosongkan saklar, yang akan membuat fitur ini seolah rusak di model yang
+   * ditarik add-in versi lama.
+   */
+  const switchMemberIds = new Set(
+    (optional(switchMembers) ?? []).map((row) => row.lighting_device_unique_id)
+  );
+  const onFloor = (switches.data ?? []) as LightingDevice[];
+  const lightingDevices = (optional(anySwitchMember) ?? []).length > 0
+    ? onFloor.filter((device) => switchMemberIds.has(device.revit_unique_id))
+    : onFloor;
 
   const symbolOverrides = Object.fromEntries(
     ((overrides.data ?? []) as SymbolOverride[]).map((row) => [row.family_key, row.symbol])
@@ -186,6 +238,8 @@ export default async function PlanPage({params}: Params) {
           circuits={circuitRows}
           symbolOverrides={symbolOverrides}
           lightingDevices={lightingDevices}
+          lineStyles={(optional(lineStyles) ?? []) as LineStyle[]}
+          switchDataMissing={(optional(anySwitch) ?? []).length === 0}
         />
       )}
     </div>

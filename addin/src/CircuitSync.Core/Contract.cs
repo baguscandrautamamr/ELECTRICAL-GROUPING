@@ -51,6 +51,12 @@ public static class SyncDirection
 
     /// <summary>Add-in mencatat tarikan model ke cloud.</summary>
     public const string Snapshot = "snapshot";
+
+    /// <summary>
+    /// Web mengantre polyline siap gambar. Bukan circuit: tidak ada panel, tidak ada
+    /// nomor, dan tidak ada yang tersambung secara listrik — hanya garis di denah.
+    /// </summary>
+    public const string Wiring = "wiring";
 }
 
 public static class SyncJobStatus
@@ -136,6 +142,44 @@ public sealed record LightingDeviceRow
     [JsonPropertyName("y_mm")] public double YMm { get; init; }
 }
 
+/// <summary>
+/// Satu saklar yang tampak di satu layout.
+/// </summary>
+/// <remarks>
+/// Pasangan <see cref="LayoutDeviceRow"/> untuk saklar, dan ada karena alasan yang
+/// sama. Satu lantai bisa punya denah lighting dan denah emergency/exit sekaligus;
+/// keduanya <c>level_key</c> sama, jadi menyaring saklar dengan lantai membuat kedua
+/// halaman menerima seluruh saklar lantai itu — dan jumlah grouping di keduanya salah.
+///
+/// Tidak bisa digabung ke <see cref="LayoutDeviceRow"/>: foreign key di sana menunjuk
+/// tabel <c>devices</c>, sedangkan saklar hidup di <c>lighting_devices</c>.
+/// </remarks>
+public sealed record LayoutLightingDeviceRow
+{
+    [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
+    [JsonPropertyName("layout_unique_id")] public string LayoutUniqueId { get; init; } = "";
+
+    [JsonPropertyName("lighting_device_unique_id")]
+    public string LightingDeviceUniqueId { get; init; } = "";
+}
+
+/// <summary>
+/// Satu line style dari model: subcategory kategori <c>OST_Lines</c>, yang di Revit
+/// muncul di dialog Line Styles.
+/// </summary>
+/// <remarks>
+/// Yang disimpan sebagai identitas adalah <c>UniqueId</c> GraphicsStyle-nya, bukan
+/// namanya. Nama line style bisa diubah user di Revit, dan add-in harus tetap bisa
+/// menemukan style yang sama saat menggambar garis yang diminta web.
+/// </remarks>
+public sealed record LineStyleRow
+{
+    [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
+    [JsonPropertyName("revit_unique_id")] public string RevitUniqueId { get; init; } = "";
+    [JsonPropertyName("name")] public string Name { get; init; } = "";
+    [JsonPropertyName("sort_order")] public int SortOrder { get; init; }
+}
+
 public sealed record DeviceRow
 {
     [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
@@ -189,6 +233,37 @@ public sealed record CircuitRow
     [JsonPropertyName("error")] public string? Error { get; init; }
 }
 
+/// <summary>Satu titik di koordinat model, milimeter — sama seperti <c>devices.x_mm</c>.</summary>
+public sealed record WirePoint
+{
+    [JsonPropertyName("x_mm")] public double XMm { get; init; }
+    [JsonPropertyName("y_mm")] public double YMm { get; init; }
+}
+
+/// <summary>Satu kaki saklar: rangkaian titik yang digambar sebagai satu polyline.</summary>
+public sealed record WireRunRow
+{
+    [JsonPropertyName("switch_index")] public int SwitchIndex { get; init; }
+    [JsonPropertyName("vertices")] public IReadOnlyList<WirePoint> Vertices { get; init; } = [];
+}
+
+/// <summary>
+/// Permintaan menggambar garis wiring, dibaca dari payload job berarah
+/// <see cref="SyncDirection.Wiring"/>.
+/// </summary>
+/// <remarks>
+/// Titik-titiknya sudah selesai dihitung di web (<c>web/lib/wiring.ts</c>) dan dipakai
+/// apa adanya. Algoritmanya sengaja tidak dikembarkan di sini: kalau lapisan Revit ikut
+/// memutuskan bentuk garis, pratinjau di web berhenti jadi janji yang bisa dipegang.
+/// Tugas add-in cuma memindahkan milimeter ke satuan internal dan memasang line style.
+/// </remarks>
+public sealed record WiringRequest
+{
+    public required string LayoutUniqueId { get; init; }
+    public required string LineStyleUniqueId { get; init; }
+    public IReadOnlyList<WireRunRow> Runs { get; init; } = [];
+}
+
 public sealed record SyncJobRow
 {
     [JsonPropertyName("id")] public Guid Id { get; init; }
@@ -223,6 +298,91 @@ public sealed record SyncJobRow
 
         return result;
     }
+
+    /// <summary>
+    /// Permintaan gambar garis di payload, atau null kalau bentuknya tidak lengkap.
+    /// </summary>
+    /// <remarks>
+    /// Null, bukan exception, dan bukan objek setengah terisi. Payload sengaja
+    /// <c>jsonb</c> supaya bentuknya bisa tumbuh tanpa migrasi, dan konsekuensinya
+    /// add-in versi lama bisa menerima job yang bentuknya belum dikenalnya. Menolak
+    /// job itu dengan jelas jauh lebih baik daripada menggambar garis dari titik yang
+    /// setengah terbaca — yang satu bisa dibaca di log, yang lain harus dicari di model.
+    ///
+    /// Titik yang tidak berbentuk angka dibuang, tapi run yang jadi berisi kurang dari
+    /// dua titik ikut dibuang juga: satu titik bukan garis.
+    /// </remarks>
+    public WiringRequest? Wiring()
+    {
+        if (Payload.ValueKind != JsonValueKind.Object ||
+            Text("layout_unique_id") is not { } layout ||
+            Text("line_style_unique_id") is not { } lineStyle ||
+            !Payload.TryGetProperty("runs", out var runs) ||
+            runs.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var parsed = new List<WireRunRow>();
+        foreach (var run in runs.EnumerateArray())
+        {
+            if (run.ValueKind != JsonValueKind.Object ||
+                !run.TryGetProperty("vertices", out var vertices) ||
+                vertices.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            var points = new List<WirePoint>();
+            foreach (var vertex in vertices.EnumerateArray())
+            {
+                if (vertex.ValueKind == JsonValueKind.Object &&
+                    Number(vertex, "x_mm") is { } x &&
+                    Number(vertex, "y_mm") is { } y)
+                {
+                    points.Add(new WirePoint { XMm = x, YMm = y });
+                }
+            }
+
+            if (points.Count < 2)
+            {
+                continue;
+            }
+
+            parsed.Add(new WireRunRow
+            {
+                SwitchIndex = run.TryGetProperty("switch_index", out var index) &&
+                              index.ValueKind == JsonValueKind.Number &&
+                              index.TryGetInt32(out var value)
+                    ? value
+                    : 0,
+                Vertices = points,
+            });
+        }
+
+        return parsed.Count == 0
+            ? null
+            : new WiringRequest
+            {
+                LayoutUniqueId = layout,
+                LineStyleUniqueId = lineStyle,
+                Runs = parsed,
+            };
+    }
+
+    private string? Text(string name) =>
+        Payload.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.String &&
+        value.GetString() is { Length: > 0 } text
+            ? text
+            : null;
+
+    private static double? Number(JsonElement owner, string name) =>
+        owner.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetDouble(out var number)
+            ? number
+            : null;
 }
 
 /// <summary>
@@ -275,6 +435,12 @@ public sealed record ModelSnapshot
 
     /// <summary>Device yang tampak di tiap layout, dibaca per view Revit.</summary>
     public IReadOnlyList<LayoutDeviceRow> LayoutDevices { get; init; } = [];
+
+    /// <summary>Saklar yang tampak di tiap layout, dibaca per view Revit.</summary>
+    public IReadOnlyList<LayoutLightingDeviceRow> LayoutLightingDevices { get; init; } = [];
+
+    /// <summary>Line style yang ada di model, pilihan gaya garis wiring di web.</summary>
+    public IReadOnlyList<LineStyleRow> LineStyles { get; init; } = [];
 
     /// <summary>
     /// <c>revit_unique_id</c> device → <c>UniqueId</c> ElectricalSystem yang memuatnya.
@@ -332,7 +498,9 @@ public sealed record ModelSnapshot
             .Concat(Panels.Select(Json))
             .Concat(Devices.Select(Json))
             .Concat(LightingDevices.Select(Json))
-            .Concat(LayoutDevices.Select(Json));
+            .Concat(LayoutDevices.Select(Json))
+            .Concat(LayoutLightingDevices.Select(Json))
+            .Concat(LineStyles.Select(Json));
     }
 }
 
