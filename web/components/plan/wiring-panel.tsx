@@ -2,7 +2,9 @@
 
 import {ChevronDown, ChevronRight, TriangleAlert} from 'lucide-react';
 import {useTranslations} from 'next-intl';
+import {useMemo} from 'react';
 import {Badge, Notice, Select} from '@/components/ui';
+import {switchStyleFor} from '@/lib/symbols';
 import {WIRE_STYLES, type WireStyle, type WiringOptions, type WiringPlan} from '@/lib/wiring';
 
 /**
@@ -29,6 +31,24 @@ export function WiringPanel({
   const t = useTranslations('wiring');
 
   const inferred = plan?.rooms.filter((room) => room.inferred).length ?? 0;
+
+  /**
+   * Kaki saklar yang benar-benar ada di denah ini, bukan sebanyak yang dipilih di
+   * dropdown: ruangan berisi satu titik tidak menghasilkan kaki, jadi saklar terakhir
+   * bisa saja tidak terpakai. Menyebutnya di keterangan padahal tidak ada garisnya
+   * membuat orang mencari warna yang tidak pernah muncul.
+   */
+  const legs = useMemo(() => {
+    const devices = new Map<number, number>();
+
+    for (const run of plan?.runs ?? []) {
+      devices.set(run.switchIndex, (devices.get(run.switchIndex) ?? 0) + run.deviceIds.length);
+    }
+
+    return [...devices.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([switchIndex, count]) => ({switchIndex, devices: count}));
+  }, [plan]);
 
   return (
     <section className="card p-5">
@@ -99,6 +119,52 @@ export function WiringPanel({
               ))}
             </Select>
           )}
+
+          {/*
+            Warna tiap saklar, beserta jumlah titik yang dipikulnya. Angka itu yang
+            memberi tahu pembagiannya merata atau tidak — di ruangan berjumlah titik
+            ganjil, satu kaki memang selalu kebagian satu lebih banyak.
+          */}
+          {legs.length > 0 ? (
+            <div>
+              <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">
+                {t('legs')}
+              </p>
+              <ul className="space-y-2">
+                {legs.map((leg) => {
+                  const wire = switchStyleFor(leg.switchIndex);
+
+                  return (
+                    <li key={leg.switchIndex} className="flex items-center gap-2.5">
+                      <svg viewBox="0 -6 40 12" className="h-3 w-10 shrink-0" aria-hidden>
+                        <path
+                          d="M 0 0 L 40 0"
+                          fill="none"
+                          stroke={wire.color}
+                          strokeWidth={3}
+                          strokeLinecap="round"
+                          strokeDasharray={
+                            wire.dash
+                              ? wire.dash
+                                  .split(' ')
+                                  .map((part) => Number(part) * 3)
+                                  .join(' ')
+                              : undefined
+                          }
+                        />
+                      </svg>
+                      <span className="text-[13px] font-semibold">
+                        {t('switchName', {number: leg.switchIndex + 1})}
+                      </span>
+                      <span className="ml-auto shrink-0 text-[12px] text-muted">
+                        {t('roomDevices', {count: leg.devices})}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
 
           {plan && inferred > 0 ? (
             <Notice tone="warn">{t('inferredWarning', {count: inferred})}</Notice>

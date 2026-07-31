@@ -134,6 +134,8 @@
     "styleHint_orthogonal": "The same split of lamps; only the line differs — vertical and horizontal with corners cut at 45°.",
     "switches": "Switches",
     "switchCount": "{count, plural, other {# switches}}",
+    "legs": "Switch legs",
+    "switchName": "Switch {number}",
     "rooms": "Rooms",
     "roomUnnamed": "Room {number}",
     "roomDevices": "{count, plural, other {# points}}",
