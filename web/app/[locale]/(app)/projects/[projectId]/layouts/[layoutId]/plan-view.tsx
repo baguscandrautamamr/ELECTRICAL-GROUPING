@@ -168,6 +168,11 @@ export function PlanView({
   }, [pinned, hovered, circuits]);
 
   function select(ids: string[], mode: 'replace' | 'toggle' | 'add') {
+    // Pilihan berubah berarti umpan balik wiring tidak lagi menggambarkan apa yang
+    // terpilih. "3 kaki terkirim" di atas pilihan yang sudah lain membuat user mengira
+    // yang baru ini sudah ikut terkirim.
+    setWiringFeedback(null);
+
     setSelected((current) => {
       if (mode === 'replace') return new Set(ids);
 
@@ -436,6 +441,7 @@ export function PlanView({
                   (sum, id) => sum + (byId.get(id)?.va ?? 0),
                   0
                 );
+                const explained = circuit.error ? explainRevit(circuit.error) : null;
 
                 return (
                   <li
@@ -459,14 +465,14 @@ export function PlanView({
                         {c('deviceCount', {count: circuit.device_unique_ids.length})} ·{' '}
                         {c('load', {va: Math.round(va)})}
                       </p>
-                      {circuit.error ? (
+                      {explained ? (
                         <>
                           <p className="mt-1 text-[12px] text-danger">
-                            {c('errorPrefix')}: {explainRevit(circuit.error).text}
+                            {c('errorPrefix')}: {explained.text}
                           </p>
-                          {explainRevit(circuit.error).detail ? (
+                          {explained.detail ? (
                             <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
-                              {explainRevit(circuit.error).detail}
+                              {explained.detail}
                             </p>
                           ) : null}
                         </>
