@@ -68,6 +68,10 @@ public sealed class CircuitSyncApi(SupabaseClient client)
             snapshot.Devices.Select(d => d with { ProjectId = projectId }).ToList(),
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
 
+        await UpsertBatchedAsync("lighting_devices",
+            snapshot.LightingDevices.Select(d => d with { ProjectId = projectId }).ToList(),
+            "project_id,revit_unique_id", ct).ConfigureAwait(false);
+
         // Setelah layouts dan devices: keduanya jadi tujuan foreign key baris ini.
         await UpsertBatchedAsync("layout_devices",
             snapshot.LayoutDevices.Select(m => m with { ProjectId = projectId }).ToList(),
@@ -77,7 +81,8 @@ public sealed class CircuitSyncApi(SupabaseClient client)
         // dulu sudah membawa keanggotaannya lewat cascade, jadi yang tersisa di sini
         // hanya keanggotaan yang hilang sementara kedua ujungnya masih ada.
         var cutoff = Uri.EscapeDataString(stamp.UtcDateTime.ToString("o", CultureInfo.InvariantCulture));
-        foreach (var table in new[] { "levels", "layouts", "panels", "devices", "layout_devices" })
+        foreach (var table in new[]
+                 { "levels", "layouts", "panels", "devices", "lighting_devices", "layout_devices" })
         {
             await Client.DeleteAsync(table, $"project_id=eq.{projectId}&updated_at=lt.{cutoff}", ct)
                 .ConfigureAwait(false);

@@ -139,6 +139,8 @@
     "roomDevices": "{count, plural, other {# points}}",
     "inferred": "Inferred from the spacing between points",
     "inferredWarning": "{count, plural, other {# rooms were inferred from point spacing, because their names did not come through from Revit. Check how they were split on the plan before using them.}}",
+    "noSwitchData": "The model carries no switch data yet, so grouping boundaries are still inferred from lamp spacing. Push the model again from the add-in so the count comes from the lighting devices in each room.",
+    "roomSplit": "· split",
     "noRooms": "No points on this plan can be wired yet.",
     "previewOnly": "Preview only. These lines are not saved and have not been sent to Revit."
   },

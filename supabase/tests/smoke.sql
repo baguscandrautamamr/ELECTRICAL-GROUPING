@@ -166,6 +166,29 @@ begin
 end;
 $$;
 
+-- Saklar: penentu sebuah ruangan dipecah jadi berapa grouping.
+insert into public.lighting_devices (project_id, revit_unique_id, family_key, level_key,
+                                     room_name, x_mm, y_mm)
+values (:pid, 'sw-1', 'Switch::1 Gang', 'L1', 'Ruang Rapat', 0, 2000),
+       (:pid, 'sw-2', 'Switch::2 Gang', 'L1', 'Ruang Rapat', 5000, 2000);
+
+do $$
+declare
+  v_before timestamptz;
+  v_after  timestamptz;
+begin
+  assert (select count(*) from public.lighting_devices) = 2, 'A tidak melihat saklar miliknya';
+
+  -- Trigger updated_at wajib jalan: sapuan snapshot membandingkan stempelnya, dan tanpa
+  -- trigger ini upsert tidak menggesernya sehingga saklar yang masih hidup ikut terhapus.
+  select updated_at into v_before from public.lighting_devices where revit_unique_id = 'sw-1';
+  perform pg_sleep(0.01);
+  update public.lighting_devices set x_mm = 100 where revit_unique_id = 'sw-1';
+  select updated_at into v_after from public.lighting_devices where revit_unique_id = 'sw-1';
+  assert v_after > v_before, 'trigger lighting_devices_touch tidak menggeser updated_at';
+end;
+$$;
+
 -- ---------------------------------------------------------------- user B
 set request.jwt.claim.sub = 'bbbbbbbb-0000-4000-8000-000000000002';
 
@@ -203,6 +226,9 @@ begin
     v_failed := true;
   end;
   assert v_failed, 'B bisa menulis device ke project orang lain';
+
+  -- Saklar bocor berarti pembagian grouping ikut bocor.
+  assert (select count(*) from public.lighting_devices) = 0, 'B melihat saklar project orang lain';
 end;
 $$;
 

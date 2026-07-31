@@ -68,6 +68,25 @@ export type LayoutDevice = {
   device_unique_id: string;
 };
 
+/**
+ * Saklar atau sensor dari kategori Revit `OST_LightingDevices` — bukan lampunya,
+ * yang ada di `OST_LightingFixtures`.
+ *
+ * Jumlahnya di sebuah ruangan menentukan lampu ruangan itu dipecah jadi berapa
+ * grouping. Tanpa ini batas grouping hanya bisa disimpulkan dari kerapatan lampu,
+ * dan dua ruangan yang dipisah dinding tipis dilebur jadi satu — lihat
+ * `supabase/migrations/20260731000000_lighting_devices.sql`.
+ */
+export type LightingDevice = {
+  project_id: string;
+  revit_unique_id: string;
+  family_key: string;
+  level_key: string;
+  room_name: string | null;
+  x_mm: number;
+  y_mm: number;
+};
+
 export type Device = {
   project_id: string;
   revit_unique_id: string;

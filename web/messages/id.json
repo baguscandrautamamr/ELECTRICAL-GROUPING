@@ -139,6 +139,8 @@
     "roomDevices": "{count, plural, other {# titik}}",
     "inferred": "Dikira-kira dari jarak antar titik",
     "inferredWarning": "{count, plural, other {# ruangan dikira-kira dari jarak antar titik, karena namanya tidak terbaca dari Revit. Periksa pembagiannya di denah sebelum dipakai.}}",
+    "noSwitchData": "Model belum membawa data saklar, jadi batas grouping masih dikira-kira dari jarak antar lampu. Tarik ulang model dari add-in supaya jumlah grouping datang dari lighting device di ruangan.",
+    "roomSplit": "· pecahan",
     "noRooms": "Belum ada titik yang bisa di-wiring di denah ini.",
     "previewOnly": "Masih pratinjau. Garis ini belum tersimpan dan belum dikirim ke Revit."
   },

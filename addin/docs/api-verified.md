@@ -87,7 +87,13 @@ lewat `tools/ApiProbe` sebelum menggantinya.
 ## Kategori
 
 `OST_LightingFixtures`, `OST_ElectricalFixtures`, `OST_ElectricalEquipment`,
-`OST_LightingFixtureTags`, `OST_ElectricalFixtureTags`.
+`OST_LightingFixtureTags`, `OST_ElectricalFixtureTags`, `OST_LightingDevices`.
+
+`OST_LightingDevices` berisi **saklar dan sensor**, bukan lampu — lampunya di
+`OST_LightingFixtures`. Dua kategori yang namanya nyaris sama dan isinya berbeda
+sama sekali; tertukar berarti membaca lampu sebagai saklar dan sebaliknya. Dipakai
+di `ModelReader.ReadLightingDevices` untuk menghitung jadi berapa grouping lampu
+sebuah ruangan dipecah.
 
 ## Tag
 
