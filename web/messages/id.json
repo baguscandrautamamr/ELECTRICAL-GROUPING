@@ -134,6 +134,8 @@
     "styleHint_orthogonal": "Pembagian lampunya sama; yang berbeda garisnya — tegak dan datar dengan sudut dipotong 45°.",
     "switches": "Jumlah saklar",
     "switchCount": "{count, plural, other {# saklar}}",
+    "legs": "Kaki saklar",
+    "switchName": "Saklar {number}",
     "rooms": "Ruangan",
     "roomUnnamed": "Ruangan {number}",
     "roomDevices": "{count, plural, other {# titik}}",

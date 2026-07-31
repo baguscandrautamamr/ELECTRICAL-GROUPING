@@ -5,7 +5,7 @@ import {useTranslations} from 'next-intl';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Device} from '@/lib/contract';
 import {isSelectable} from '@/lib/contract';
-import {STATUS_STYLE, geometryFor, symbolFor} from '@/lib/symbols';
+import {STATUS_STYLE, geometryFor, switchStyleFor, symbolFor} from '@/lib/symbols';
 import type {WireRun} from '@/lib/wiring';
 
 type Bounds = {minX: number; minY: number; width: number; height: number};
@@ -412,22 +412,26 @@ export function PlanCanvas({
         */}
         {wiring && wiring.length > 0 ? (
           <g style={{pointerEvents: 'none'}}>
-            {wiring.map((run) => (
-              <polyline
-                key={`${run.roomKey}:${run.switchIndex}`}
-                points={run.vertices.map((vertex) => `${vertex.x},${flipY(vertex.y)}`).join(' ')}
-                fill="none"
-                stroke="var(--accent)"
-                strokeWidth={radius / 3}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                // Kaki saklar dibedakan garis, bukan warna kedua. Warna sudah dipakai
-                // status device, dan garis putus-putus tetap terbaca saat denah
-                // dicetak hitam putih.
-                strokeDasharray={run.switchIndex % 2 === 1 ? scaleDash('4 3', radius) : undefined}
-                opacity={0.85}
-              />
-            ))}
+            {wiring.map((run) => {
+              // Tiap saklar punya warnanya sendiri, dan polanya tetap ikut berbeda —
+              // lihat `SWITCH_STYLES`. Token serinya terpisah dari token status, jadi
+              // garis saklar tidak pernah terbaca sebagai status device.
+              const wire = switchStyleFor(run.switchIndex);
+
+              return (
+                <polyline
+                  key={`${run.roomKey}:${run.switchIndex}`}
+                  points={run.vertices.map((vertex) => `${vertex.x},${flipY(vertex.y)}`).join(' ')}
+                  fill="none"
+                  stroke={wire.color}
+                  strokeWidth={radius / 3}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeDasharray={wire.dash ? scaleDash(wire.dash, radius) : undefined}
+                  opacity={0.85}
+                />
+              );
+            })}
           </g>
         ) : null}
 
