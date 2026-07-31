@@ -614,59 +614,67 @@ pembagian yang kelihatan masuk akal padahal salah, dan itu jenis kesalahan yang
 paling lama tidak ketahuan. Jalan keluar sebenarnya adalah tabel `rooms` beserta
 batas geometrinya — belum ada.
 
-### Bentuk garis adalah pilihan user, dan satu kaki bisa punya dua bentuk
+### Papan catur berlaku di semua kolom, tanpa kecuali
 
-Percobaan pertama memperlakukan chamfer sebagai bentuk tunggal untuk seluruh denah,
-dan hasilnya tidak menyerupai gambar acuan sama sekali: chamfer di atas diagonal
-**menghapus** bentuk silangnya — sudutnya dipotong dan X berubah jadi siku membulat.
+Dua percobaan gagal sebelum ini, dan keduanya salah di tempat yang sama.
 
-Yang benar dua gaya, dan gaya dipilih user, bukan disimpulkan dari bentuk ruangan:
+Yang pertama memakai chamfer sebagai bentuk tunggal untuk seluruh denah. Chamfer di
+atas diagonal **menghapus** bentuk silangnya — sudutnya dipotong, X berubah jadi siku
+membulat.
 
-| | Silang | Siku |
-| --- | --- | --- |
-| 2 kolom | X lurus | lajur tegak, sudut 45° |
-| 3 kolom | X di pasangan + kolom sisa siku | lajur tegak, sudut 45° |
+Yang kedua memperlakukan kolom yang tidak kebagian pasangan sebagai satu blok dan
+menempelkannya utuh ke satu kaki. Hasilnya kolom itu jadi satu garis tegak yang
+menyambung empat lampu **beruntun**, padahal yang diminta justru selang-seling. Ini
+kesalahan yang lebih dalam: ia mengubah pembagian saklar, bukan cuma gambarnya.
 
-Kolom diambil berpasangan, jadi aturannya jalan untuk berapa pun kolomnya — bukan
-cuma 2 dan 3. Kolom ganjil yang tersisa dirangkai tegak lalu **ditempelkan** ke kaki
-yang ujungnya paling dekat, bukan dijadikan saklar ketiga: yang diminta dua saklar,
-dan menambah kaki hanya karena ruangannya berkolom ganjil mengubah jumlah saklar
-tanpa ada yang memintanya.
+Aturannya sekarang tiga, dan ketiganya diuji:
 
-Konsekuensinya satu kaki bisa memuat dua bentuk sekaligus — bagian menyilang lurus,
-kolom sisa siku — jadi `Leg.straight` menghitung berapa titik pertama yang digambar
-lurus. Tanpa itu sambungannya memotong ruangan secara diagonal alih-alih menyusur
-tepi seperti di gambar acuan.
+1. Papan catur `(baris + kolom) % jumlah saklar` untuk **seluruh** lampu
+2. Garis hanya menyambung lampu sesama saklar, dan tidak menyentuh lampu saklar lain
+3. Dua kaki tidak boleh berimpit sepanjang jalan
 
-### Garis memutar karena papan catur, bukan karena estetika
+Gaya gambar tidak ikut menentukan pembagian saklar. Lampu mana ikut saklar mana adalah
+urusan listrik; silang dan siku hanya berbeda bentuk garisnya.
 
-Di gaya siku, dua lampu berurutan dalam satu kaki hampir selalu diselingi lampu milik
-kaki sebelah — itu akibat langsung pembagian papan catur. Menariknya lurus berarti
-garis menembus lampu yang tidak ada hubungannya dengan kaki itu: benar secara
-topologi, salah dibaca sebagai gambar kerja.
+### Kenapa tiga kolom pasti butuh sambungan bukan-diagonal
 
-Karena itu tiap ruas diuji dulu, lalu memutar lewat lajur di sisi **luar** ruangan
-kalau rute langsungnya menyerempet. Sisi luar, bukan sisi dalam: sisi dalam berisi
-kolom lampu berikutnya, jadi memutar ke sana hanya menukar satu halangan dengan
-halangan lain.
+Sambungan diagonal tidak pernah melewati lampu lain — itu yang membuat pola X aman
+tanpa perlu memutar sama sekali. Tapi diagonal saja tidak selalu cukup.
 
-Ujinya dijalankan pada rute **yang benar-benar digambar**, bukan pada garis lurus
-antar lampu. Versi pertama menguji garis lurusnya dan meloloskan empat ruas yang
-sebenarnya menyerempet: chamfer memotong sudut, dan potongan itu lewat dekat lampu
-yang garis lurusnya sendiri jauh.
+Di ruangan tiga kolom, lampu sewarna di pojok kiri atas dan pojok kanan atas
+masing-masing hanya punya **satu** tetangga diagonal, dan tetangganya sama — yang di
+tengah baris kedua. Dua ujung buntu yang menempel ke titik yang sama. Satu garis cuma
+boleh punya dua ujung, jadi sisanya pasti terputus.
 
-Yang masih tersisa: ruas pendekatan terakhir menyusur baris lampu, dan di situ ia
-bisa lewat sekitar 0,25 × jarak antar lampu dari lampu kaki lain. Gambar acuan
-menyelesaikannya dengan memutar seluruh sambungan ke luar ruangan — belum dikerjakan,
-karena itu berarti perutean keliling penuh, bukan penghindaran per ruas.
+Karena itu urutannya dipilih tetangga terdekat: diagonal berjarak 1,4 kali jarak antar
+lampu, yang selang satu baris berjarak 2 kali, jadi diagonal selalu menang dan
+lompatan jauh hanya muncul kalau memang tidak ada pilihan lain. Lompatan itulah yang
+dirutekan memutar.
 
-### Kolom sisa membuat kedua saklar tidak sama banyak
+### Detour harus lebih lebar daripada radius bersihnya
 
-Ruangan 3 kolom × 4 baris di gaya silang menghasilkan 8 lampu di satu saklar dan 4 di
-saklar lain, karena kolom sisa ditempelkan seluruhnya ke satu kaki. Itu mengikuti
-gambar acuan, tapi berarti kedua saklar tidak lagi menerangi separuh-separuh. Kalau
-keseimbangan lebih penting daripada kemiripan gambar, yang perlu diubah adalah cara
-kolom sisa dibagi — bukan cara ia digambar.
+`DETOUR_RATIO` wajib lebih besar daripada `CLEARANCE_RATIO`. Versi pertama memakai 0,32
+lawan 0,4, dan akibatnya lajur putarannya sendiri jatuh **di dalam** radius bersih lampu
+yang sedang dihindari: putarannya dinilai menyerempet, tidak ada kandidat yang lolos,
+dan rutenya kembali menembus lampu. Gejalanya menyesatkan — kelihatan seperti
+penghindarannya tidak jalan, padahal ambangnya yang saling meniadakan.
+
+### Bersilangan bukan bertumpuk
+
+Penilaian impitan menghitung **deretan** contoh yang berdekatan berturut-turut, bukan
+jumlah contoh yang berdekatan. Dua garis yang bersilangan selalu punya satu dua contoh
+yang dekat di titik potongnya, dan bersilangan justru wajib ada di pola X — menghukumnya
+membuat kedua kaki menghindari bentuk yang benar. Yang tidak boleh adalah dua garis yang
+berjalan berdampingan sepanjang jalan, karena itu terbaca sebagai satu garis.
+
+Kaki dirutekan berurutan, dan kaki berikutnya membaca jalur yang sudah dipakai. Tiap
+ruas menawar tiga rute — langsung, memutar kiri, memutar kanan — lalu yang paling sedikit
+berimpit yang menang. Tanpa itu kedua kaki memilih lajur yang sama dan bertumpuk.
+
+Sisa yang belum bersih: di ruangan 3x4 dan 5x4 masih ada sekitar dua sampai empat kali
+jarak antar lampu di mana kedua kaki berjalan berdampingan. Keduanya memang kehabisan
+lajur bebas di situ; memperbaikinya berarti menggeser lajur per ruas, bukan memilih
+salah satu dari dua sisi.
 
 ---
 

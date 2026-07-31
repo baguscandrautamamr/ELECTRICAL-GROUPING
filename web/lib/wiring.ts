@@ -311,20 +311,6 @@ function columnsOf(devices: readonly Device[], tolerance: number): Map<string, n
   return index;
 }
 
-/**
- * Satu kaki saklar, beserta di mana bentuk garisnya berganti.
- *
- * `straight` menghitung berapa titik pertama yang digambar lurus. Satu kaki memang
- * bisa berisi dua bentuk sekaligus: di gaya silang, bagian menyilangnya lurus, lalu
- * kolom sisa yang ditempelkan di ujungnya dirangkai siku — persis seperti di gambar
- * acuan, dan itu yang membuat sambungannya menyusur tepi alih-alih memotong ruangan
- * secara diagonal.
- */
-type Leg = {
-  devices: Device[];
-  straight: number;
-};
-
 /** Petak (baris, kolom) satu ruangan. Sel bisa kosong; ruangan jarang persegi penuh. */
 type Grid = {
   rows: number;
@@ -352,119 +338,95 @@ function gridOf(bands: readonly Device[][], columns: Map<string, number>): Grid 
 }
 
 /**
- * Gaya silang: kolom diambil berpasangan, tiap pasangan menyilang turun.
+ * Pembagian saklar: papan catur murni, `(baris + kolom) % jumlah saklar`.
  *
- * Untuk pasangan (kiri, kanan), kaki pertama mengambil kiri di baris genap dan kanan
- * di baris ganjil; kaki kedua kebalikannya. Itu yang menghasilkan pola X yang dipakai
- * di lapangan — nyalakan satu saklar dan tiap baris tetap dapat satu lampu,
- * berselang-seling sisi, jadi ruangan terang merata separuh.
+ * Berlaku untuk **seluruh** kolom, tanpa kecuali. Percobaan sebelumnya
+ * memperlakukan kolom ganjil yang tidak kebagian pasangan sebagai satu blok dan
+ * menempelkannya utuh ke satu kaki; hasilnya kolom itu jadi satu garis tegak yang
+ * menyambung empat lampu beruntun, padahal yang diminta justru selang-seling.
  *
- * Semua pasangan menyumbang ke **dua kaki yang sama**, bukan dua kaki per pasangan.
- * Ruangan enam kolom tetap dua saklar, bukan enam.
+ * Gaya gambar tidak ikut menentukan pembagian ini. Lampu mana ikut saklar mana
+ * adalah urusan listrik, dan tidak boleh berubah hanya karena bentuk garisnya
+ * diganti.
  */
-function crossingLegs(grid: Grid): {legs: Leg[]; leftover: Device[]} {
-  const legs: Leg[] = [
-    {devices: [], straight: 0},
-    {devices: [], straight: 0}
-  ];
-  const leftover: Device[] = [];
+function legsOf(grid: Grid, switches: number): Device[][] {
+  const legs: Device[][] = Array.from({length: switches}, () => []);
 
-  for (let column = 0; column + 1 < grid.columns; column += 2) {
-    for (let row = 0; row < grid.rows; row++) {
-      const left = grid.at(row, column);
-      const right = grid.at(row, column + 1);
-
-      // Baris genap: kaki 0 di kiri. Baris ganjil: kaki 0 pindah ke kanan.
-      const first = row % 2 === 0 ? left : right;
-      const second = row % 2 === 0 ? right : left;
-
-      if (first) legs[0]!.devices.push(first);
-      if (second) legs[1]!.devices.push(second);
+  for (let row = 0; row < grid.rows; row++) {
+    for (let column = 0; column < grid.columns; column++) {
+      const device = grid.at(row, column);
+      if (device) legs[(row + column) % switches]!.push(device);
     }
   }
 
-  // Seluruh bagian menyilang digambar lurus; yang menyusul sesudahnya tidak.
-  for (const leg of legs) leg.straight = leg.devices.length;
-
-  // Kolom ganjil yang tidak kebagian pasangan. Dirangkai tegak dari atas ke bawah;
-  // ke mana ia ditempelkan diputuskan di `attachLeftover`.
-  if (grid.columns % 2 === 1) {
-    const last = grid.columns - 1;
-    for (let row = 0; row < grid.rows; row++) {
-      const device = grid.at(row, last);
-      if (device) leftover.push(device);
-    }
-  }
-
-  return {legs, leftover};
+  return legs;
 }
 
 /**
- * Menempelkan kolom sisa ke kaki yang ujungnya paling dekat.
+ * Urutan sambungan satu kaki: tetangga terdekat, mulai dari kiri atas.
  *
- * Sisa kolom tidak dijadikan saklar ketiga: yang diminta dua saklar, dan menambah
- * kaki hanya karena ruangannya berkolom ganjil akan mengubah jumlah saklar tanpa
- * ada yang memintanya. Arah tempelnya mengikuti ujung mana yang lebih dekat, jadi
- * garis sambungnya tidak melintasi seluruh ruangan untuk mencapai pangkalnya.
+ * Tetangga terdekat otomatis mendahulukan diagonal. Di papan catur, dua lampu
+ * sewarna yang bertetangga diagonal berjarak sekitar 1,4 kali jarak antar lampu,
+ * sedangkan yang selang satu baris atau satu kolom berjarak 2 kali — jadi diagonal
+ * selalu menang, dan diagonal adalah satu-satunya sambungan yang tidak pernah
+ * melewati lampu milik kaki lain.
+ *
+ * Lompatan yang lebih jauh tetap muncul, dan memang tidak bisa dihindari: di
+ * ruangan tiga kolom, lampu sewarna di pojok kiri atas dan pojok kanan atas
+ * masing-masing cuma punya satu tetangga diagonal, dan tetangganya sama. Dua ujung
+ * buntu yang menempel ke titik yang sama — satu garis hanya boleh punya dua ujung,
+ * jadi sisanya pasti butuh sambungan bukan-diagonal. Sambungan itulah yang nanti
+ * dirutekan memutar.
  */
-function attachLeftover(legs: Leg[], leftover: readonly Device[]) {
-  if (leftover.length === 0) return;
+function orderLeg(devices: readonly Device[]): Device[] {
+  if (devices.length < 2) return [...devices];
 
-  const head = leftover[0]!;
-  const tail = leftover[leftover.length - 1]!;
+  const remaining = [...devices];
 
-  let bestLeg = 0;
-  let bestDistance = Infinity;
-  let reversed = false;
-
-  legs.forEach((leg, index) => {
-    const end = leg.devices[leg.devices.length - 1];
-    if (!end) return;
-
-    const toHead = distance(end, head);
-    const toTail = distance(end, tail);
-
-    if (Math.min(toHead, toTail) < bestDistance) {
-      bestDistance = Math.min(toHead, toTail);
-      bestLeg = index;
-      reversed = toTail < toHead;
+  // Kiri atas sebagai pangkal supaya urutannya stabil antar muat ulang.
+  let bestStart = 0;
+  remaining.forEach((device, index) => {
+    const best = remaining[bestStart]!;
+    if (device.y_mm > best.y_mm || (device.y_mm === best.y_mm && device.x_mm < best.x_mm)) {
+      bestStart = index;
     }
   });
 
-  legs[bestLeg]!.devices.push(...(reversed ? [...leftover].reverse() : leftover));
+  const ordered: Device[] = [remaining.splice(bestStart, 1)[0]!];
+
+  while (remaining.length > 0) {
+    const from = ordered[ordered.length - 1]!;
+
+    let pick = 0;
+    let bestDistance = Infinity;
+
+    remaining.forEach((candidate, index) => {
+      const gap = distance(from, candidate);
+
+      // Seri diputus baris teratas lalu kolom terkiri — bukan urutan kedatangan,
+      // yang bergantung pada urutan baris dari database.
+      const better =
+        gap < bestDistance - EPSILON ||
+        (Math.abs(gap - bestDistance) < EPSILON &&
+          (candidate.y_mm > remaining[pick]!.y_mm ||
+            (candidate.y_mm === remaining[pick]!.y_mm && candidate.x_mm < remaining[pick]!.x_mm)));
+
+      if (better) {
+        bestDistance = gap;
+        pick = index;
+      }
+    });
+
+    ordered.push(remaining.splice(pick, 1)[0]!);
+  }
+
+  return ordered;
 }
 
 function distance(a: Device, b: Device): number {
   const dx = a.x_mm - b.x_mm;
   const dy = a.y_mm - b.y_mm;
   return Math.sqrt(dx * dx + dy * dy);
-}
-
-/**
- * Gaya siku: tidak ada silang, kolom ditelusuri satu per satu.
- *
- * Kaki tetap dibagi papan catur `(baris + kolom) % jumlah saklar` — itu urusan
- * listrik dan tidak boleh berubah hanya karena gambarnya diganti. Yang berbeda cuma
- * urutannya: menurut kolom, arah naik-turun dibalik tiap kolom, jadi garisnya
- * memanjang tegak seperti di gambar acuan alih-alih menyisir mendatar.
- */
-function orthogonalLegs(grid: Grid, switches: number): Leg[] {
-  const legs: Leg[] = Array.from({length: switches}, () => ({devices: [], straight: 0}));
-
-  for (let column = 0; column < grid.columns; column++) {
-    const members: Device[][] = Array.from({length: switches}, () => []);
-
-    for (let row = 0; row < grid.rows; row++) {
-      const device = grid.at(row, column);
-      if (device) members[(row + column) % switches]!.push(device);
-    }
-
-    members.forEach((list, leg) => {
-      legs[leg]!.devices.push(...(column % 2 === 0 ? list : [...list].reverse()));
-    });
-  }
-
-  return legs;
 }
 
 function push(into: Point[], point: Point) {
@@ -522,11 +484,18 @@ function routeChamfer(points: readonly Point[], chamfer: number): Point[] {
   return out;
 }
 
-/** Seberapa jauh garis memutar ke samping saat menghindari lampu, terhadap jarak khas. */
-const DETOUR_RATIO = 0.32;
+/**
+ * Seberapa jauh garis memutar ke samping saat menghindari lampu, terhadap jarak khas.
+ *
+ * **Harus lebih besar daripada `CLEARANCE_RATIO`.** Kalau tidak, lajur putarannya
+ * sendiri jatuh di dalam radius bersih lampu yang sedang dihindari — putarannya
+ * dinilai menyerempet, tidak ada kandidat yang lolos, dan rutenya kembali menembus
+ * lampu. Versi pertama memakai 0,32 lawan 0,4 dan gagal persis begitu.
+ */
+const DETOUR_RATIO = 0.5;
 
 /** Sedekat apa sebuah lampu dianggap terhalangi oleh garis yang lewat. */
-const CLEARANCE_RATIO = 0.4;
+const CLEARANCE_RATIO = 0.35;
 
 /** Jarak titik ke ruas garis. Dipakai memutuskan apakah sebuah lampu terlewati. */
 function distanceToSegment(point: Point, a: Point, b: Point): number {
@@ -540,45 +509,99 @@ function distanceToSegment(point: Point, a: Point, b: Point): number {
   return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
 }
 
+/** Satu ruas garis yang sudah dipakai kaki lain. */
+type Segment = {a: Point; b: Point};
+
+/** Sedekat apa dua garis dianggap menumpuk, terhadap jarak khas antar lampu. */
+const OVERLAP_RATIO = 0.18;
+
 /**
- * Garis memutar ke samping saat jalur lurusnya melewati lampu milik kaki lain.
+ * Rute satu kaki, menghindari lampu kaki lain **dan** garis kaki lain.
  *
- * Ini yang membedakan gaya siku di gambar acuan dari sekadar garis tegak: kaki saklar
- * dibagi papan catur, jadi dua lampu berurutan di satu kolom hampir selalu diselingi
- * lampu milik kaki sebelah. Menariknya lurus berarti garis menembus lampu yang tidak
- * ada hubungannya dengan kaki itu — benar secara topologi, tapi salah dibaca sebagai
- * gambar kerja.
+ * Dua batasan berjalan bersamaan, dan keduanya datang dari papan catur. Karena
+ * lampu sewarna selalu diselingi lampu warna lain, sambungan yang bukan diagonal
+ * pasti melewati lampu yang bukan miliknya kalau ditarik lurus. Dan karena kedua
+ * kaki menempati ruangan yang sama, keduanya cenderung memilih lajur yang sama
+ * lalu bertumpuk — garis yang bertumpuk tidak bisa dibaca sebagai dua sirkuit.
  *
- * Memutarnya ke arah **luar ruangan**, bukan ke arah tengah: sisi luar hampir selalu
- * kosong, sedangkan sisi dalam berisi kolom lampu berikutnya. Belokannya 45° di kedua
- * ujung, sama seperti chamfer, jadi bentuknya menyatu dengan sisa gambar.
+ * Karena itu tiap ruas menawar tiga rute: langsung, memutar ke kiri, memutar ke
+ * kanan. Yang menabrak lampu didiskualifikasi lebih dulu; sisanya dinilai dari
+ * seberapa panjang ia berimpit dengan garis yang sudah ada, lalu dari panjangnya
+ * sendiri. Rute langsung menang saat seri — memutar tanpa sebab hanya menambah
+ * belokan yang harus dibaca orang.
  */
 function routeAvoiding(
   points: readonly Point[],
   obstacles: readonly Point[],
+  occupied: readonly Segment[],
   detour: number,
   chamfer: number,
-  centerX: number
+  style: WireStyle
 ): Point[] {
   if (points.length < 2) return [...points];
 
-  const clearance = (detour / DETOUR_RATIO) * CLEARANCE_RATIO;
+  const spacing = detour / DETOUR_RATIO;
+  const clearance = spacing * CLEARANCE_RATIO;
+  const overlapReach = spacing * OVERLAP_RATIO;
 
   /**
-   * Berapa lampu yang terserempet sebuah rute. Diukur pada rute **yang benar-benar
-   * digambar**, bukan pada garis lurus antar lampu: chamfer memotong sudut, dan
-   * potongan itu bisa lewat dekat lampu yang garis lurusnya sendiri jauh.
+   * Berapa lampu yang terserempet. Diukur pada rute **yang benar-benar digambar**,
+   * bukan pada garis lurus antar lampu: chamfer memotong sudut, dan potongan itu
+   * bisa lewat dekat lampu yang garis lurusnya sendiri jauh.
    */
-  function violations(route: readonly Point[]): number {
+  function hits(route: readonly Point[]): number {
     let count = 0;
     for (let index = 1; index < route.length; index++) {
-      const a = route[index - 1]!;
-      const b = route[index]!;
       for (const obstacle of obstacles) {
-        if (distanceToSegment(obstacle, a, b) < clearance) count++;
+        if (distanceToSegment(obstacle, route[index - 1]!, route[index]!) < clearance) count++;
       }
     }
     return count;
+  }
+
+  /**
+   * Seberapa panjang rute ini **berjalan berdampingan** dengan garis yang sudah ada.
+   *
+   * Yang dihitung deretan contoh yang berdekatan berturut-turut, bukan jumlah contoh
+   * yang dekat. Dua garis yang bersilangan pasti punya satu dua contoh yang dekat di
+   * titik potongnya — dan bersilangan justru wajib ada di pola X. Yang tidak boleh
+   * adalah dua garis yang berimpit sepanjang jalan, karena itu terbaca sebagai satu
+   * garis, bukan dua sirkuit.
+   */
+  function overlap(route: readonly Point[]): number {
+    if (occupied.length === 0) return 0;
+
+    let total = 0;
+    let run = 0;
+
+    for (let index = 1; index < route.length; index++) {
+      const a = route[index - 1]!;
+      const b = route[index]!;
+      const steps = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (spacing / 6)));
+
+      for (let step = 0; step <= steps; step++) {
+        const t = step / steps;
+        const point = {x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t};
+
+        if (occupied.some((seg) => distanceToSegment(point, seg.a, seg.b) < overlapReach)) {
+          run++;
+        } else {
+          // Deretan pendek adalah persilangan, bukan impitan.
+          if (run > 3) total += run;
+          run = 0;
+        }
+      }
+    }
+
+    return total + (run > 3 ? run : 0);
+  }
+
+  function length(route: readonly Point[]): number {
+    let total = 0;
+    for (let index = 1; index < route.length; index++) {
+      total += Math.hypot(route[index]!.x - route[index - 1]!.x, route[index]!.y - route[index - 1]!.y);
+    }
+    return total;
   }
 
   const out: Point[] = [points[0]!];
@@ -587,29 +610,47 @@ function routeAvoiding(
     const from = points[index - 1]!;
     const to = points[index]!;
 
-    const direct = routeChamfer([from, to], chamfer);
+    // Silang menyambung diagonal dengan garis lurus; siku selalu tegak-datar.
+    const direct = style === 'crossing' ? [from, to] : routeChamfer([from, to], chamfer);
+    const candidates = [direct, aroundRoute(from, to, detour, -1), aroundRoute(from, to, detour, 1)];
 
-    // Memutar hanya kalau rute langsungnya memang menyerempet. Memutar tanpa sebab
-    // cuma menambah belokan yang harus dibaca orang.
-    const chosen = violations(direct) === 0 ? direct : aroundRoute(from, to, detour, centerX);
+    let chosen = direct;
+    let bestScore = Infinity;
 
-    for (const vertex of chosen.slice(1)) push(out, vertex);
+    for (const candidate of candidates) {
+      const score = hits(candidate) * 1e9 + overlap(candidate) * 1e4 + length(candidate) / spacing;
+      if (score < bestScore - EPSILON) {
+        bestScore = score;
+        chosen = candidate;
+      }
+    }
+
+    for (let step = 1; step < chosen.length; step++) {
+      occupiedPush(occupied, chosen[step - 1]!, chosen[step]!);
+      push(out, chosen[step]!);
+    }
   }
 
   return out;
 }
 
+/** `occupied` sengaja tumbuh selama perutean: satu kaki pun tidak boleh menimpa dirinya sendiri. */
+function occupiedPush(occupied: readonly Segment[], a: Point, b: Point) {
+  (occupied as Segment[]).push({a, b});
+}
+
 /**
- * Rute memutar lewat sisi luar: keluar 45°, menyusur lajur, lalu menuju tujuan.
+ * Rute memutar: keluar 45°, menyusur lajur, masuk 45°, lalu mendatar ke tujuan.
  *
- * Lajurnya di sisi luar ruangan — sisi dalam berisi kolom lampu berikutnya, jadi
- * memutar ke sana hanya menukar satu halangan dengan halangan lain.
+ * `side` menentukan lajurnya di kiri atau kanan. Keduanya selalu ditawarkan, dan
+ * yang memilih adalah penilaian di `routeAvoiding` — sisi yang bebas dari garis
+ * kaki lain yang menang. Itu yang membuat kedua kaki tidak berebut lajur yang sama.
  */
-function aroundRoute(from: Point, to: Point, detour: number, centerX: number): Point[] {
+function aroundRoute(from: Point, to: Point, detour: number, side: -1 | 1): Point[] {
   const vertical = Math.abs(to.y - from.y) >= Math.abs(to.x - from.x);
 
   if (vertical) {
-    const lane = from.x + (from.x <= centerX ? -detour : detour);
+    const lane = from.x + side * detour;
     const step = Math.sign(to.y - from.y) || 1;
     const back = Math.sign(to.x - lane) || 1;
 
@@ -624,7 +665,7 @@ function aroundRoute(from: Point, to: Point, detour: number, centerX: number): P
     ];
   }
 
-  const lane = from.y + (from.y <= (from.y + to.y) / 2 ? -detour : detour);
+  const lane = from.y + side * detour;
   const step = Math.sign(to.x - from.x) || 1;
   const back = Math.sign(to.y - lane) || 1;
 
@@ -635,42 +676,6 @@ function aroundRoute(from: Point, to: Point, detour: number, centerX: number): P
     {x: to.x, y: lane + back * detour},
     to
   ];
-}
-
-/**
- * Titik gambar satu kaki: bagian lurus dulu, sisanya siku.
- *
- * Yang menyilang digambar lurus. Chamfer di atas diagonal justru **menghapus** bentuk
- * silangnya — sudutnya dipotong dan X berubah jadi siku membulat. Itu yang membuat
- * percobaan pertama tidak menyerupai gambar acuan sama sekali, dan itu sebabnya
- * bentuk garis bukan satu pilihan tunggal untuk seluruh kaki.
- *
- * Sambungan antar dua bagian ikut dirutekan siku, bukan dibiarkan lurus: titik
- * terakhir bagian lurus jadi titik pertama bagian siku, jadi belokannya menyusur
- * tepi ruangan alih-alih memotong diagonal.
- */
-function verticesOf(
-  leg: Leg,
-  shape: {chamfer: number; detour: number; obstacles: readonly Point[]; centerX: number}
-): Point[] {
-  const points = leg.devices.map(pointOf);
-  if (leg.straight >= points.length) return points;
-
-  // Lampu milik kaki ini sendiri bukan penghalang — garisnya memang harus menyentuhnya.
-  const own = new Set(points.map((point) => `${point.x}:${point.y}`));
-  const obstacles = shape.obstacles.filter((point) => !own.has(`${point.x}:${point.y}`));
-
-  const straight = points.slice(0, leg.straight);
-  const rest = routeAvoiding(
-    points.slice(Math.max(0, leg.straight - 1)),
-    obstacles,
-    shape.detour,
-    shape.chamfer,
-    shape.centerX
-  );
-
-  // `rest` dimulai dari titik terakhir bagian lurus, jadi kepalanya dibuang.
-  return leg.straight === 0 ? rest : [...straight, ...rest.slice(1)];
 }
 
 /**
@@ -713,30 +718,33 @@ export function planWiring(devices: readonly Device[], options: WiringOptions): 
     const bands = bandsOf(room.devices, spacing * BAND_REACH);
     const grid = gridOf(bands, columnsOf(room.devices, spacing * BAND_REACH));
 
-    const obstacles = room.devices.map(pointOf);
-    const centerX =
-      obstacles.reduce((sum, point) => sum + point.x, 0) / Math.max(1, obstacles.length);
-    const shape = {chamfer, detour: spacing * DETOUR_RATIO, obstacles, centerX};
+    // Garis yang sudah dirutekan di ruangan ini. Kaki berikutnya membacanya supaya
+    // tidak memilih lajur yang sama lalu bertumpuk — dua garis yang berimpit tidak
+    // bisa dibaca sebagai dua sirkuit yang berbeda.
+    const occupied: Segment[] = [];
 
-    let legs: Leg[];
-    if (options.style === 'crossing') {
-      const crossing = crossingLegs(grid);
-      attachLeftover(crossing.legs, crossing.leftover);
-      legs = crossing.legs;
-    } else {
-      legs = orthogonalLegs(grid, switches);
-    }
-
-    legs.forEach((leg, switchIndex) => {
+    legsOf(grid, switches).forEach((members, switchIndex) => {
       // Ruangan berisi satu lampu tidak bisa dibagi dua; kaki yang kosong dibuang
       // daripada muncul sebagai garis tanpa panjang.
-      if (leg.devices.length < 2) return;
+      if (members.length < 2) return;
+
+      const leg = orderLeg(members);
+      const own = new Set(leg.map((device) => device.revit_unique_id));
 
       runs.push({
         roomKey: room.key,
         switchIndex,
-        deviceIds: leg.devices.map((device) => device.revit_unique_id),
-        vertices: verticesOf(leg, shape)
+        deviceIds: leg.map((device) => device.revit_unique_id),
+        vertices: routeAvoiding(
+          leg.map(pointOf),
+          // Lampu milik kaki ini sendiri bukan penghalang — garisnya memang harus
+          // menyentuhnya. Yang harus dihindari justru lampu warna satunya.
+          room.devices.filter((device) => !own.has(device.revit_unique_id)).map(pointOf),
+          occupied,
+          spacing * DETOUR_RATIO,
+          chamfer,
+          options.style
+        )
       });
     });
   }
