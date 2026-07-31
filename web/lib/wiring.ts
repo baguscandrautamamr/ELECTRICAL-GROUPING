@@ -10,7 +10,7 @@
  * Konsekuensinya, algoritmanya tidak boleh dikembarkan di sisi C#. Lapisan Revit
  * menggambar apa yang diperintahkan; keputusan bentuknya berhenti di sini.
  */
-import type {Device, LightingDevice} from '@/lib/contract';
+import type {Device, LightingDevice, WireRunPayload} from '@/lib/contract';
 import {isSelectable} from '@/lib/contract';
 
 /**
@@ -904,4 +904,40 @@ export function planWiring(
   }
 
   return {rooms, runs, spacing};
+}
+
+/**
+ * Kaki yang seluruh titiknya ada di dalam sebuah pilihan.
+ *
+ * Sengaja **seluruhnya**, bukan sebagian. Kaki yang dipotong di tengah akan digambar di
+ * Revit sebagai garis yang tidak pernah dilihat siapa pun di pratinjau — dan itu
+ * melanggar satu-satunya janji berkas ini: yang tergambar di Revit adalah angka yang
+ * identik dengan yang terlihat di web. Kaki yang cuma sebagian terpilih dilewati, dan
+ * jumlahnya dilaporkan supaya "kenapa cuma sebagian yang terkirim" punya jawaban.
+ */
+export function runsWithin(runs: readonly WireRun[], selected: ReadonlySet<string>): {
+  inside: WireRun[];
+  partial: number;
+} {
+  const inside: WireRun[] = [];
+  let partial = 0;
+
+  for (const run of runs) {
+    const count = run.deviceIds.filter((id) => selected.has(id)).length;
+    if (count === run.deviceIds.length) inside.push(run);
+    else if (count > 0) partial++;
+  }
+
+  return {inside, partial};
+}
+
+/**
+ * Kaki siap kirim: titik yang sama persis dengan yang digambar pratinjau, dalam bentuk
+ * yang dibaca add-in.
+ */
+export function toWirePayload(runs: readonly WireRun[]): WireRunPayload[] {
+  return runs.map((run) => ({
+    switch_index: run.switchIndex,
+    vertices: run.vertices.map((vertex) => ({x_mm: vertex.x, y_mm: vertex.y}))
+  }));
 }

@@ -408,7 +408,13 @@ public sealed class SyncController : IDisposable
             }
 
             var jobs = await _api.FetchQueuedApplyJobsAsync(projectId.Value).ConfigureAwait(false);
-            if (jobs.Count == 0)
+
+            // Dua antrean, satu detak. Job gambar garis tidak menunggu antrean apply-nya
+            // kosong: keduanya datang dari halaman yang sama dan user tidak membedakan
+            // "kirim circuit" dari "kirim garis" sebagai dua kunjungan berbeda.
+            var wiringJobs = await _api.FetchQueuedWiringJobsAsync(projectId.Value).ConfigureAwait(false);
+
+            if (jobs.Count + wiringJobs.Count == 0)
             {
                 if (!quiet)
                 {
@@ -418,17 +424,83 @@ public sealed class SyncController : IDisposable
                 return;
             }
 
-            if (jobs.Count > 1)
+            if (jobs.Count + wiringJobs.Count > 1)
             {
-                Log(LogKind.Info, "log.jobs_found", jobs.Count);
+                Log(LogKind.Info, "log.jobs_found", jobs.Count + wiringJobs.Count);
             }
 
             foreach (var job in jobs)
             {
                 await ApplyJobAsync(projectId.Value, job).ConfigureAwait(false);
             }
+
+            foreach (var job in wiringJobs)
+            {
+                await DrawWiringJobAsync(job).ConfigureAwait(false);
+            }
         });
     }
+
+    /// <summary>
+    /// Satu job gambar garis: baca payload, gambar di thread Revit, tandai hasilnya.
+    /// </summary>
+    /// <remarks>
+    /// Tidak ada validasi terhadap snapshot seperti pada job apply, dan itu disengaja.
+    /// Garis wiring tidak menyambungkan apa pun secara listrik: ia tidak bisa bentrok
+    /// dengan circuit lain, tidak butuh slot panel, dan tidak berubah arti kalau sebuah
+    /// device dipindahkan. Yang perlu ada hanya view-nya dan line style-nya, dan itu
+    /// diperiksa <see cref="WiringApplier"/> terhadap dokumen yang sedang terbuka.
+    /// </remarks>
+    private async Task DrawWiringJobAsync(SyncJobRow job)
+    {
+        if (job.Wiring() is not { } request)
+        {
+            // Payload jsonb bisa tumbuh tanpa migrasi, jadi add-in versi lama bisa
+            // menerima bentuk yang belum dikenalnya. Ditolak dengan jelas, bukan
+            // digambar setengah.
+            Log(LogKind.Error, WiringPayloadUnreadable);
+            await _api.MarkJobFailedAsync(job.Id, WiringPayloadUnreadable).ConfigureAwait(false);
+            return;
+        }
+
+        var result = await _queue.PostAsync<WiringApplyResult?>(app =>
+            app.ActiveUIDocument?.Document is { } doc
+                ? WiringApplier.Apply(doc, request)
+                : null).ConfigureAwait(false);
+
+        if (result is null)
+        {
+            Log(LogKind.Warn, "log.no_document");
+            return;
+        }
+
+        if (result.Ok)
+        {
+            await _api.MarkJobAppliedAsync(job.Id).ConfigureAwait(false);
+            Log(LogKind.Ok, "log.wiring_done", result.RunsDrawn, result.LinesDrawn);
+            return;
+        }
+
+        var error = string.IsNullOrWhiteSpace(result.ErrorDetail)
+            ? result.ErrorKey ?? ""
+            : $"{result.ErrorKey}\n{result.ErrorDetail}";
+
+        await _api.MarkJobFailedAsync(job.Id, error).ConfigureAwait(false);
+
+        // Kunci pesannya jadi pesannya, bukan argumen di dalam pesan lain: kunci mentah
+        // seperti `wiring.layout_not_plan` di tengah kalimat tidak berarti apa pun bagi
+        // yang membacanya. Keterangan dari Revit ikut, di barisnya sendiri — kalimat
+        // Revit-lah yang membedakan style yang hilang dari kurva yang ditolak.
+        Log(LogKind.Error, result.ErrorKey ?? WiringPayloadUnreadable);
+
+        if (!string.IsNullOrWhiteSpace(result.ErrorDetail))
+        {
+            Log(LogKind.Warn, "log.wiring_detail", result.ErrorDetail);
+        }
+    }
+
+    /// <summary>Kunci untuk payload wiring yang bentuknya tidak dikenali.</summary>
+    private const string WiringPayloadUnreadable = "wiring.payload_unreadable";
 
     /// <summary>
     /// Satu job, empat lompatan thread: baca model (Revit) → ambil rencana (jaringan) →

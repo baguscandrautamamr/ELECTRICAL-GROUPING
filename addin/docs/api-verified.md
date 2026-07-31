@@ -87,7 +87,8 @@ lewat `tools/ApiProbe` sebelum menggantinya.
 ## Kategori
 
 `OST_LightingFixtures`, `OST_ElectricalFixtures`, `OST_ElectricalEquipment`,
-`OST_LightingFixtureTags`, `OST_ElectricalFixtureTags`, `OST_LightingDevices`.
+`OST_LightingFixtureTags`, `OST_ElectricalFixtureTags`, `OST_LightingDevices`,
+`OST_Lines`.
 
 `OST_LightingDevices` berisi **saklar dan sensor**, bukan lampu — lampunya di
 `OST_LightingFixtures`. Dua kategori yang namanya nyaris sama dan isinya berbeda
@@ -136,6 +137,34 @@ Overload per-view itu yang membedakan denah lighting dari denah emergency/exit d
 lantai yang sama. Melempar `Autodesk.Revit.Exceptions.ArgumentException` untuk view
 yang tidak mendukung pengumpulan; ditangani sebagai "isinya tidak diketahui", bukan
 sebagai kegagalan tarikan model.
+
+## Line style
+
+Dipakai membaca daftar line style ke web — lihat `ModelReader.ReadLineStyles`.
+
+| Anggota | Catatan |
+| --- | --- |
+| `Category.GetCategory(Document, BuiltInCategory)` | Method statis biasa. Dipakai alih-alih `doc.Settings.Categories.get_Item(...)`, yang memanggil accessor properti secara eksplisit dan karena itu bergantung pada bagaimana indexer `Categories` diterjemahkan ke C#. |
+| `Category.SubCategories` | `CategoryNameMap`, `IEnumerable` non-generic — `foreach (Category sub in ...)` yang melakukan cast-nya. Subcategory `OST_Lines` **adalah** daftar Line Styles di Revit. |
+| `Category.GetGraphicsStyle(GraphicsStyleType)` | Bisa `null`; style tanpa GraphicsStyle projection tidak bisa dipasang ke curve. |
+| `GraphicsStyleType.Projection` | Yang berlaku untuk detail curve. |
+| `GraphicsStyle` | Turunan `Element`, jadi `UniqueId` dan `Name` datang dari sana. Yang disimpan ke Supabase `UniqueId`-nya — nama style bisa diubah user. |
+
+## Menggambar garis wiring
+
+Dipakai di `WiringApplier`. **Compile-nya terbukti; perilakunya belum diuji di Revit** —
+lihat catatan uji manual di [`CATATAN.md`](../../CATATAN.md).
+
+| Anggota | Catatan |
+| --- | --- |
+| `Document.Create` → `Autodesk.Revit.Creation.Document` | Jalan masuk ke pembuatan elemen yang tidak punya factory statis. |
+| `Creation.Document.NewDetailCurve(View, Curve)` | Mengembalikan `DetailCurve`. Kurvanya harus sebidang dengan view-nya. Detail curve, bukan model curve: garis wiring adalah anotasi satu view. |
+| `CurveElement.LineStyle` | `Element`, get **dan** set. Diisi `GraphicsStyle` hasil pilihan user di web. |
+| `Line.CreateBound(XYZ, XYZ)` | Satu ruas polyline = satu curve; Revit tidak punya "detail polyline". |
+| `XYZ.DistanceTo(XYZ)` | Menyaring ruas yang lebih pendek daripada toleransi. |
+| `Document.Application` → `ApplicationServices.Application` | |
+| `Application.ShortCurveTolerance` | `double`. Ruas yang lebih pendek daripada ini ditolak Revit dengan exception, jadi dibuang lebih dulu. Dibaca dari Revit, tidak ditulis sebagai angka. |
+| `ViewPlan.GenLevel` → `Level.ProjectElevation` | `double`. Elevasi bidang tempat detail curve ditaruh. Denah yang levelnya bukan di elevasi nol akan menolak kurva di Z=0. |
 
 ## Satuan
 

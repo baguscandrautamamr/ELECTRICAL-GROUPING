@@ -48,16 +48,18 @@ public static class ModelReader
             });
         }
 
-        var (layouts, layoutDevices) = ReadLayouts(doc);
+        var layoutData = ReadLayouts(doc);
 
         return new ModelSnapshot
         {
             Levels = levels,
-            Layouts = layouts,
+            Layouts = layoutData.Rows,
             Panels = panels,
             Devices = devices,
             LightingDevices = ReadLightingDevices(doc, levels),
-            LayoutDevices = layoutDevices,
+            LayoutDevices = layoutData.Devices,
+            LayoutLightingDevices = layoutData.LightingDevices,
+            LineStyles = ReadLineStyles(doc),
             DeviceSystems = systems,
         };
     }
@@ -105,13 +107,64 @@ public static class ModelReader
     }
 
     /// <summary>
+    /// Line style di model: subcategory kategori <c>OST_Lines</c>, yang di Revit muncul
+    /// di dialog Line Styles.
+    /// </summary>
+    /// <remarks>
+    /// Yang dikirim sebagai identitas adalah <c>UniqueId</c> GraphicsStyle-nya, bukan
+    /// nama style-nya. Nama bisa diubah user, dan yang dipakai
+    /// <see cref="WiringApplier"/> untuk menemukan style yang sama harus yang tidak
+    /// berubah.
+    ///
+    /// Tidak ada penyaringan nama di sini. Menebak mana yang "style untuk wiring" dari
+    /// namanya akan meleset di setiap template yang penamaannya berbeda — user yang
+    /// memilih, di web, dari daftar apa adanya.
+    /// </remarks>
+    private static List<LineStyleRow> ReadLineStyles(Document doc)
+    {
+        var rows = new List<LineStyleRow>();
+
+        // Category.GetCategory, bukan Settings.Categories.get_Item: yang kedua memanggil
+        // accessor properti secara eksplisit, dan itu bergantung pada bagaimana indexer
+        // Categories diterjemahkan ke C#. Yang pertama method statis biasa.
+        var lines = Category.GetCategory(doc, BuiltInCategory.OST_Lines);
+        if (lines is null)
+        {
+            return rows;
+        }
+
+        foreach (Category sub in lines.SubCategories)
+        {
+            // Style yang tidak punya GraphicsStyle projection tidak bisa dipasang ke
+            // detail curve, jadi menawarkannya di web hanya menjanjikan kegagalan.
+            if (sub.GetGraphicsStyle(GraphicsStyleType.Projection) is not { } style)
+            {
+                continue;
+            }
+
+            rows.Add(new LineStyleRow
+            {
+                RevitUniqueId = style.UniqueId,
+                Name = sub.Name,
+            });
+        }
+
+        return rows
+            .OrderBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+            .Select((row, index) => row with { SortOrder = index })
+            .ToList();
+    }
+
+    /// <summary>
     /// View denah yang dipakai sebagai halaman kerja di web. Yang memutuskan view mana
     /// yang ikut adalah <see cref="LayoutFilter"/> di Core; di sini hanya penerjemahan.
     /// </summary>
-    private static (List<LayoutRow> Rows, List<LayoutDeviceRow> Members) ReadLayouts(Document doc)
+    private static (List<LayoutRow> Rows, List<LayoutDeviceRow> Devices,
+        List<LayoutLightingDeviceRow> LightingDevices) ReadLayouts(Document doc)
     {
         var rows = new List<LayoutRow>();
         var members = new List<LayoutDeviceRow>();
+        var switchMembers = new List<LayoutLightingDeviceRow>();
 
         var views = new FilteredElementCollector(doc)
             .OfClass(typeof(ViewPlan))
@@ -157,12 +210,25 @@ public static class ModelReader
                     DeviceUniqueId = deviceId,
                 });
             }
+
+            // Saklar dibaca per view juga, dengan alasan yang sama seperti device: dua
+            // denah lighting di satu lantai punya isi berbeda, dan saklar yang mengendalikan
+            // lampu biasa tidak boleh ikut memecah denah emergency. Kategorinya tidak
+            // bergantung `kind` — yang memutuskan tetap view-nya sendiri.
+            foreach (var switchId in VisibleIds(doc, view, BuiltInCategory.OST_LightingDevices))
+            {
+                switchMembers.Add(new LayoutLightingDeviceRow
+                {
+                    LayoutUniqueId = view.UniqueId,
+                    LightingDeviceUniqueId = switchId,
+                });
+            }
         }
 
         return (rows
             .OrderBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
             .Select((row, index) => row with { SortOrder = index })
-            .ToList(), members);
+            .ToList(), members, switchMembers);
     }
 
     /// <summary>
@@ -175,12 +241,16 @@ public static class ModelReader
     /// emergency/exit di lantai yang sama menghasilkan daftar yang berbeda, padahal
     /// pasangan (level, kind) keduanya identik.
     /// </remarks>
-    private static IEnumerable<string> VisibleDeviceIds(Document doc, View view, string kind)
-    {
-        var category = kind == DeviceKind.Receptacle
+    private static IEnumerable<string> VisibleDeviceIds(Document doc, View view, string kind) =>
+        VisibleIds(doc, view, kind == DeviceKind.Receptacle
             ? BuiltInCategory.OST_ElectricalFixtures
-            : BuiltInCategory.OST_LightingFixtures;
+            : BuiltInCategory.OST_LightingFixtures);
 
+    /// <summary>
+    /// <c>UniqueId</c> family instance satu kategori yang benar-benar tampak di sebuah view.
+    /// </summary>
+    private static IEnumerable<string> VisibleIds(Document doc, View view, BuiltInCategory category)
+    {
         try
         {
             return new FilteredElementCollector(doc, view.Id)

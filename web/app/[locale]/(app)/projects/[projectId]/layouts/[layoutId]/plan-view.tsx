@@ -11,9 +11,23 @@ import {PlanCanvas} from '@/components/plan/plan-canvas';
 import {SystemBrowser} from '@/components/plan/system-browser';
 import {WiringPanel} from '@/components/plan/wiring-panel';
 import {Badge, Button, Card, CardHeader, Empty, Notice, Select, cx} from '@/components/ui';
-import type {Circuit, Device, DeviceKind, Layout, LightingDevice, Panel} from '@/lib/contract';
-import {DEFAULT_WIRING_OPTIONS, planWiring, type WiringOptions} from '@/lib/wiring';
-import {createCircuit, queueApply, removeCircuit, updateCircuit} from './actions';
+import type {
+  Circuit,
+  Device,
+  DeviceKind,
+  Layout,
+  LightingDevice,
+  LineStyle,
+  Panel
+} from '@/lib/contract';
+import {
+  DEFAULT_WIRING_OPTIONS,
+  planWiring,
+  runsWithin,
+  toWirePayload,
+  type WiringOptions
+} from '@/lib/wiring';
+import {createCircuit, queueApply, queueWiring, removeCircuit, updateCircuit} from './actions';
 
 /**
  * Jeda penyegaran, dalam detik. Yang cepat hanya berlaku selagi menunggu Revit
@@ -33,7 +47,9 @@ export function PlanView({
   panels,
   circuits,
   symbolOverrides,
-  lightingDevices
+  lightingDevices,
+  lineStyles,
+  switchDataMissing
 }: {
   projectId: string;
   kind: DeviceKind;
@@ -42,11 +58,16 @@ export function PlanView({
   panels: Panel[];
   circuits: Circuit[];
   symbolOverrides: Record<string, string>;
-  /** Saklar di lantai ini; jumlahnya per ruangan memecah lampu jadi beberapa grouping. */
+  /** Saklar di denah ini; jumlahnya per ruangan memecah lampu jadi beberapa grouping. */
   lightingDevices: LightingDevice[];
+  /** Line style dari model, pilihan gaya garis saat mengirim wiring ke Revit. */
+  lineStyles: LineStyle[];
+  /** Benar kalau project ini belum punya data saklar sama sekali. */
+  switchDataMissing: boolean;
 }) {
   const t = useTranslations('plan');
   const c = useTranslations('circuits');
+  const w = useTranslations('wiring');
   const errors = useTranslations('errors');
   const revitErrors = useTranslations('revitErrors');
   const router = useRouter();
@@ -88,9 +109,23 @@ export function PlanView({
    */
   const [wiringOpen, setWiringOpen] = useState(false);
   const [wiringOptions, setWiringOptions] = useState<WiringOptions>(DEFAULT_WIRING_OPTIONS);
+  const [lineStyleId, setLineStyleId] = useState('');
+  const [wiringFeedback, setWiringFeedback] = useState<Feedback>(null);
+  const [sendingWiring, startSendingWiring] = useTransition();
   const wiringPlan = useMemo(
     () => (wiringOpen ? planWiring(devices, wiringOptions, lightingDevices) : null),
     [wiringOpen, devices, wiringOptions, lightingDevices]
+  );
+
+  /**
+   * Bagian rencana wiring yang seluruhnya ada di dalam pilihan user — itulah yang
+   * dikirim. Dihitung dari rencana yang sedang digambar, bukan dihitung ulang untuk
+   * subset-nya: ruangan dan jarak khas datang dari seluruh denah, jadi menghitung ulang
+   * hanya untuk yang terpilih akan menghasilkan garis yang berbeda dari yang dilihat.
+   */
+  const sendable = useMemo(
+    () => runsWithin(wiringPlan?.runs ?? [], selected),
+    [wiringPlan, selected]
   );
 
   const usablePanels = useMemo(() => panels.filter((panel) => panel.is_usable), [panels]);
@@ -133,6 +168,11 @@ export function PlanView({
   }, [pinned, hovered, circuits]);
 
   function select(ids: string[], mode: 'replace' | 'toggle' | 'add') {
+    // Pilihan berubah berarti umpan balik wiring tidak lagi menggambarkan apa yang
+    // terpilih. "3 kaki terkirim" di atas pilihan yang sudah lain membuat user mengira
+    // yang baru ini sudah ikut terkirim.
+    setWiringFeedback(null);
+
     setSelected((current) => {
       if (mode === 'replace') return new Set(ids);
 
@@ -163,6 +203,40 @@ export function PlanView({
             ? c('needSelection')
             : result.reason === 'panel'
               ? c('needPanel')
+              : errors('unknown')
+      });
+    });
+  }
+
+  /**
+   * Mengantre gambar garis untuk bagian denah yang sedang dipilih.
+   *
+   * Tidak lewat `act`: umpan baliknya muncul di panel wiring, bukan di kartu circuit di
+   * atas — pesan yang jauh dari tombolnya membuat user tidak tahu apa yang baru terjadi.
+   */
+  function sendWiring() {
+    const runs = toWirePayload(sendable.inside);
+
+    startSendingWiring(async () => {
+      const result = await queueWiring({
+        projectId,
+        layoutUniqueId: layout.revit_unique_id,
+        lineStyleUniqueId: lineStyleId,
+        runs
+      });
+
+      if (result.ok) {
+        setWiringFeedback({tone: 'ok', text: w('sent', {count: runs.length})});
+        return;
+      }
+
+      setWiringFeedback({
+        tone: 'danger',
+        text:
+          result.reason === 'selection'
+            ? w('sendNeedsSelection')
+            : result.reason === 'lineStyle'
+              ? w('sendNeedsLineStyle')
               : errors('unknown')
       });
     });
@@ -367,6 +441,7 @@ export function PlanView({
                   (sum, id) => sum + (byId.get(id)?.va ?? 0),
                   0
                 );
+                const explained = circuit.error ? explainRevit(circuit.error) : null;
 
                 return (
                   <li
@@ -390,14 +465,14 @@ export function PlanView({
                         {c('deviceCount', {count: circuit.device_unique_ids.length})} ·{' '}
                         {c('load', {va: Math.round(va)})}
                       </p>
-                      {circuit.error ? (
+                      {explained ? (
                         <>
                           <p className="mt-1 text-[12px] text-danger">
-                            {c('errorPrefix')}: {explainRevit(circuit.error).text}
+                            {c('errorPrefix')}: {explained.text}
                           </p>
-                          {explainRevit(circuit.error).detail ? (
+                          {explained.detail ? (
                             <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
-                              {explainRevit(circuit.error).detail}
+                              {explained.detail}
                             </p>
                           ) : null}
                         </>
@@ -469,6 +544,21 @@ export function PlanView({
           options={wiringOptions}
           onOptionsChange={setWiringOptions}
           plan={wiringPlan}
+          lineStyles={lineStyles}
+          lineStyleId={lineStyleId}
+          onLineStyleChange={(id) => {
+            setLineStyleId(id);
+            setWiringFeedback(null);
+          }}
+          switchDataMissing={switchDataMissing}
+          send={{
+            runs: sendable.inside.length,
+            partial: sendable.partial,
+            selected: selected.size,
+            sending: sendingWiring,
+            onSend: sendWiring,
+            feedback: wiringFeedback
+          }}
         />
 
         <Card>

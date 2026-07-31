@@ -15,7 +15,7 @@ export type DeviceStatus = (typeof DEVICE_STATUSES)[number];
 export const CIRCUIT_STATUSES = ['draft', 'queued', 'applied', 'failed'] as const;
 export type CircuitStatus = (typeof CIRCUIT_STATUSES)[number];
 
-export type SyncDirection = 'apply' | 'snapshot';
+export type SyncDirection = 'apply' | 'snapshot' | 'wiring';
 export type SyncJobStatus = 'queued' | 'applied' | 'failed';
 
 export type Project = {
@@ -87,6 +87,36 @@ export type LightingDevice = {
   y_mm: number;
 };
 
+/**
+ * Satu saklar yang tampak di satu layout.
+ *
+ * Pasangan `LayoutDevice` untuk saklar, dan ada karena alasan yang sama. Satu lantai bisa
+ * punya denah lighting dan denah emergency/exit sekaligus; keduanya `level_key` sama, jadi
+ * menyaring saklar dengan lantai membuat kedua halaman menerima seluruh saklar lantai itu —
+ * dan jumlah grouping di keduanya salah — lihat
+ * `supabase/migrations/20260731010000_layout_lighting_devices.sql`.
+ */
+export type LayoutLightingDevice = {
+  project_id: string;
+  layout_unique_id: string;
+  lighting_device_unique_id: string;
+};
+
+/**
+ * Line style dari model: subcategory kategori Revit `OST_Lines`, yang di Revit muncul di
+ * dialog Line Styles.
+ *
+ * Web tidak pernah mengarang namanya. Yang sah hanya yang ada di model, karena add-in
+ * harus menemukannya kembali lewat `revit_unique_id` untuk dipasang ke garis yang
+ * digambar — dan nama style bisa diubah user kapan saja.
+ */
+export type LineStyle = {
+  project_id: string;
+  revit_unique_id: string;
+  name: string;
+  sort_order: number;
+};
+
 export type Device = {
   project_id: string;
   revit_unique_id: string;
@@ -144,6 +174,17 @@ export type SyncJob = {
   error: string | null;
   applied_at: string | null;
   created_at: string;
+};
+
+/**
+ * Satu kaki saklar di dalam payload job `wiring`. Cermin dari `WireRunRow` di C#.
+ *
+ * Titiknya milimeter di koordinat model, sama seperti `device.x_mm`. Add-in memakainya apa
+ * adanya — bentuk garisnya diputuskan di sini, bukan di sana.
+ */
+export type WireRunPayload = {
+  switch_index: number;
+  vertices: {x_mm: number; y_mm: number}[];
 };
 
 export type SymbolOverride = {

@@ -72,17 +72,29 @@ public sealed class CircuitSyncApi(SupabaseClient client)
             snapshot.LightingDevices.Select(d => d with { ProjectId = projectId }).ToList(),
             "project_id,revit_unique_id", ct).ConfigureAwait(false);
 
+        await UpsertBatchedAsync("line_styles",
+            snapshot.LineStyles.Select(s => s with { ProjectId = projectId }).ToList(),
+            "project_id,revit_unique_id", ct).ConfigureAwait(false);
+
         // Setelah layouts dan devices: keduanya jadi tujuan foreign key baris ini.
         await UpsertBatchedAsync("layout_devices",
             snapshot.LayoutDevices.Select(m => m with { ProjectId = projectId }).ToList(),
             "project_id,layout_unique_id,device_unique_id", ct).ConfigureAwait(false);
 
-        // Sapuan layout_devices ditaruh terakhir: menghapus layout atau device lebih
+        // Idem, dengan tujuan layouts dan lighting_devices.
+        await UpsertBatchedAsync("layout_lighting_devices",
+            snapshot.LayoutLightingDevices.Select(m => m with { ProjectId = projectId }).ToList(),
+            "project_id,layout_unique_id,lighting_device_unique_id", ct).ConfigureAwait(false);
+
+        // Sapuan keanggotaan ditaruh terakhir: menghapus layout, device, atau saklar lebih
         // dulu sudah membawa keanggotaannya lewat cascade, jadi yang tersisa di sini
         // hanya keanggotaan yang hilang sementara kedua ujungnya masih ada.
         var cutoff = Uri.EscapeDataString(stamp.UtcDateTime.ToString("o", CultureInfo.InvariantCulture));
         foreach (var table in new[]
-                 { "levels", "layouts", "panels", "devices", "lighting_devices", "layout_devices" })
+                 {
+                     "levels", "layouts", "panels", "devices", "lighting_devices", "line_styles",
+                     "layout_devices", "layout_lighting_devices",
+                 })
         {
             await Client.DeleteAsync(table, $"project_id=eq.{projectId}&updated_at=lt.{cutoff}", ct)
                 .ConfigureAwait(false);
@@ -109,9 +121,20 @@ public sealed class CircuitSyncApi(SupabaseClient client)
     /// Job <c>apply</c> berstatus <c>queued</c> milik satu project, tertua dulu.
     /// </summary>
     public Task<IReadOnlyList<SyncJobRow>> FetchQueuedApplyJobsAsync(Guid projectId, CancellationToken ct = default) =>
+        FetchQueuedJobsAsync(projectId, SyncDirection.Apply, ct);
+
+    /// <summary>
+    /// Job <c>wiring</c> berstatus <c>queued</c>: permintaan menggambar garis, bukan
+    /// membuat circuit.
+    /// </summary>
+    public Task<IReadOnlyList<SyncJobRow>> FetchQueuedWiringJobsAsync(Guid projectId, CancellationToken ct = default) =>
+        FetchQueuedJobsAsync(projectId, SyncDirection.Wiring, ct);
+
+    private Task<IReadOnlyList<SyncJobRow>> FetchQueuedJobsAsync(Guid projectId, string direction,
+        CancellationToken ct) =>
         Client.SelectAsync<SyncJobRow>("sync_jobs",
             $"select=id,project_id,direction,status,payload,error,applied_at" +
-            $"&project_id=eq.{projectId}&direction=eq.{SyncDirection.Apply}" +
+            $"&project_id=eq.{projectId}&direction=eq.{direction}" +
             $"&status=eq.{SyncJobStatus.Queued}&order=created_at.asc", ct);
 
     public async Task<IReadOnlyList<CircuitRow>> FetchCircuitsAsync(Guid projectId, IReadOnlyList<Guid> ids,

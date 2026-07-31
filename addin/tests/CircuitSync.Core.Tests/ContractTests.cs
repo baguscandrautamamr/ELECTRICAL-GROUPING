@@ -74,6 +74,52 @@ public class ContractTests
     }
 
     [Fact]
+    public void Layout_lighting_device_serialises_to_the_agreed_columns()
+    {
+        var fields = Fields(new LayoutLightingDeviceRow
+        {
+            ProjectId = Guid.NewGuid(),
+            LayoutUniqueId = "view-1",
+            LightingDeviceUniqueId = "switch-1",
+        });
+
+        AssertSameSet(["project_id", "layout_unique_id", "lighting_device_unique_id"], fields);
+    }
+
+    [Fact]
+    public void Lighting_device_serialises_to_the_agreed_columns()
+    {
+        var fields = Fields(new LightingDeviceRow
+        {
+            ProjectId = Guid.NewGuid(),
+            RevitUniqueId = "switch-1",
+            FamilyKey = "Switch::1 Gang",
+            LevelKey = "L1",
+            RoomName = "Ruang Rapat",
+        });
+
+        AssertSameSet(
+        [
+            "project_id", "revit_unique_id", "family_key", "level_key", "room_name",
+            "x_mm", "y_mm",
+        ], fields);
+    }
+
+    [Fact]
+    public void Line_style_serialises_to_the_agreed_columns()
+    {
+        var fields = Fields(new LineStyleRow
+        {
+            ProjectId = Guid.NewGuid(),
+            RevitUniqueId = "gs-1",
+            Name = "LIGHTING",
+            SortOrder = 0,
+        });
+
+        AssertSameSet(["project_id", "revit_unique_id", "name", "sort_order"], fields);
+    }
+
+    [Fact]
     public void Panel_serialises_to_the_agreed_columns()
     {
         var fields = Fields(new PanelRow
@@ -236,6 +282,110 @@ public class ContractTests
             """, CircuitSyncJson.Options)!;
 
         Assert.Equal([good], job.CircuitIds());
+    }
+
+    // ---------------------------------------------------------------- wiring
+
+    private static SyncJobRow WiringJob(string payload) =>
+        JsonSerializer.Deserialize<SyncJobRow>($$"""
+            {"id":"{{Guid.NewGuid()}}","project_id":"{{Guid.NewGuid()}}",
+             "direction":"wiring","status":"queued","payload": {{payload}} }
+            """, CircuitSyncJson.Options)!;
+
+    [Fact]
+    public void Wiring_payload_reads_layout_style_and_points()
+    {
+        var request = WiringJob("""
+            {
+              "layout_unique_id": "view-1",
+              "line_style_unique_id": "gs-1",
+              "runs": [
+                {"switch_index": 1, "vertices": [
+                  {"x_mm": 1000, "y_mm": 2000},
+                  {"x_mm": 1600, "y_mm": 2000},
+                  {"x_mm": 1600, "y_mm": 2600}]}
+              ]
+            }
+            """).Wiring();
+
+        Assert.NotNull(request);
+        Assert.Equal("view-1", request.LayoutUniqueId);
+        Assert.Equal("gs-1", request.LineStyleUniqueId);
+
+        var run = Assert.Single(request.Runs);
+        Assert.Equal(1, run.SwitchIndex);
+        Assert.Equal(3, run.Vertices.Count);
+        Assert.Equal(1600, run.Vertices[2].XMm);
+        Assert.Equal(2600, run.Vertices[2].YMm);
+    }
+
+    /// <summary>
+    /// Nomor saklar boleh tidak ada — ia hanya penanda warna di web, bukan sesuatu yang
+    /// menentukan bentuk garis. Nol adalah kaki pertama, dan itu jawaban yang aman.
+    /// </summary>
+    [Fact]
+    public void Wiring_run_without_switch_index_falls_back_to_the_first_leg()
+    {
+        var request = WiringJob("""
+            {"layout_unique_id":"v","line_style_unique_id":"s",
+             "runs":[{"vertices":[{"x_mm":0,"y_mm":0},{"x_mm":10,"y_mm":0}]}]}
+            """).Wiring();
+
+        Assert.NotNull(request);
+        Assert.Equal(0, Assert.Single(request.Runs).SwitchIndex);
+    }
+
+    /// <summary>
+    /// Satu titik bukan garis. Run seperti itu dibuang, bukan digambar sebagai kurva
+    /// berpanjang nol — yang di Revit berarti exception, bukan garis pendek.
+    /// </summary>
+    [Fact]
+    public void Wiring_drops_runs_that_cannot_become_a_line()
+    {
+        var request = WiringJob("""
+            {"layout_unique_id":"v","line_style_unique_id":"s","runs":[
+              {"vertices":[{"x_mm":0,"y_mm":0}]},
+              {"vertices":[{"x_mm":0,"y_mm":0},{"x_mm":10,"y_mm":0}]},
+              {"vertices":[{"x_mm":5,"y_mm":"bukan angka"},{"x_mm":9,"y_mm":9}]}
+            ]}
+            """).Wiring();
+
+        Assert.NotNull(request);
+        Assert.Single(request.Runs);
+    }
+
+    /// <summary>
+    /// Payload yang tidak lengkap ditolak seluruhnya. Add-in versi lama bisa menerima
+    /// bentuk yang belum dikenalnya, dan menggambar dari titik yang setengah terbaca
+    /// meninggalkan garis salah di model — yang hanya bisa ditemukan dengan membuka Revit.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"line_style_unique_id":"s","runs":[{"vertices":[{"x_mm":0,"y_mm":0},{"x_mm":1,"y_mm":1}]}]}""")]
+    [InlineData("""{"layout_unique_id":"v","runs":[{"vertices":[{"x_mm":0,"y_mm":0},{"x_mm":1,"y_mm":1}]}]}""")]
+    [InlineData("""{"layout_unique_id":"","line_style_unique_id":"s","runs":[{"vertices":[{"x_mm":0,"y_mm":0},{"x_mm":1,"y_mm":1}]}]}""")]
+    [InlineData("""{"layout_unique_id":"v","line_style_unique_id":"s","runs":[]}""")]
+    [InlineData("""{"layout_unique_id":"v","line_style_unique_id":"s","runs":"bukan array"}""")]
+    [InlineData("""{"layout_unique_id":"v","line_style_unique_id":"s"}""")]
+    [InlineData("""{}""")]
+    public void Incomplete_wiring_payload_is_rejected_whole(string payload)
+    {
+        Assert.Null(WiringJob(payload).Wiring());
+    }
+
+    /// <summary>
+    /// Job apply dan job wiring memakai kolom payload yang sama. Membaca yang satu
+    /// sebagai yang lain harus menghasilkan kosong, bukan tebakan.
+    /// </summary>
+    [Fact]
+    public void Apply_payload_is_not_read_as_a_wiring_request()
+    {
+        var job = JsonSerializer.Deserialize<SyncJobRow>($$"""
+            {"id":"{{Guid.NewGuid()}}","project_id":"{{Guid.NewGuid()}}","direction":"apply",
+             "status":"queued","payload": { "circuit_ids": ["{{Guid.NewGuid()}}"] } }
+            """, CircuitSyncJson.Options)!;
+
+        Assert.Null(job.Wiring());
+        Assert.Single(job.CircuitIds());
     }
 
     private static void AssertSameSet(string[] expected, IReadOnlyCollection<string> actual)

@@ -16,6 +16,7 @@ import {
   type UnconnectedRow
 } from '@/lib/summaries';
 import {firstProblem, optional} from '@/lib/supabase/errors';
+import {allRows} from '@/lib/supabase/pages';
 import {createClient} from '@/lib/supabase/server';
 
 type Params = {params: Promise<{projectId: string}>};
@@ -33,7 +34,19 @@ async function load(projectId: string) {
       supabase.from('projects').select('id, name, owner_id, created_at, updated_at').eq('id', projectId).maybeSingle(),
       supabase.from('layouts').select('*').eq('project_id', projectId).order('sort_order'),
       supabase.from('panels').select('*').eq('project_id', projectId).order('name'),
-      supabase.from('devices').select('kind, level_key').eq('project_id', projectId),
+      // Berhalaman meski hanya jadi jalur cadangan. Jumlah utamanya dihitung di SQL lewat
+      // `layout_device_counts`; daftar ini dipakai saat model terakhir ditarik add-in versi
+      // lama. Model sungguhan hampir selalu punya lebih dari seribu device, jadi tanpa
+      // halaman jalur cadangannya melaporkan angka yang salah — dan angka yang salah lebih
+      // buruk daripada tidak ada angka.
+      allRows<Pick<Device, 'kind' | 'level_key'>>((from, to) =>
+        supabase
+          .from('devices')
+          .select('kind, level_key')
+          .eq('project_id', projectId)
+          .order('revit_unique_id')
+          .range(from, to)
+      ),
       supabase.rpc('layout_device_counts', {p_project: projectId}),
       supabase.rpc('devices_without_layout', {p_project: projectId}),
       supabase.rpc('panel_contents', {p_project: projectId}),
