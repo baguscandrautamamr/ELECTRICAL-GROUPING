@@ -21,22 +21,21 @@
   },
   "auth": {
     "heading": "Sign in to CircuitSync",
-    "subheading": "Use your work email. We send a sign-in link, or you can use a password.",
+    "subheading": "Access is by invitation. Use the email your admin invited — we send a sign-in link, or you can use a password.",
     "email": "Email",
     "password": "Password",
     "modeLink": "Email link",
     "modePassword": "Password",
     "sendLink": "Send sign-in link",
     "signIn": "Sign in",
-    "signUp": "Create account",
     "linkSent": "Sign-in link sent to {email}. Open it on this device so the session carries over.",
-    "signUpSent": "Confirmation email sent to {email}. Open the link to activate the account.",
     "needEmail": "Enter an email first",
     "needPassword": "Enter a password first",
     "wrongCredentials": "That email and password do not match",
     "rateLimited": "Too many attempts. Wait a moment, then try again.",
     "generic": "Sign-in could not be completed. Check the email and password, then try again.",
-    "callbackFailed": "That link has expired or was already used. Ask for a new one."
+    "callbackFailed": "That link has expired or was already used. Ask for a new one.",
+    "notInvited": "That email has not been invited yet. Ask your admin to invite it, then try again."
   },
   "projects": {
     "heading": "Projects",
