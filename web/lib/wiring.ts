@@ -656,16 +656,6 @@ const DETOUR_RATIO = 0.5;
 /** Sedekat apa sebuah lampu dianggap terhalangi oleh garis yang lewat. */
 const CLEARANCE_RATIO = 0.35;
 
-/**
- * Panjang keluar dan masuk putaran, sebagai pecahan dari panjang lompatannya.
- *
- * Pecahan, bukan jarak tetap: proporsi yang tetap membuat bentuk putaran sama di ruangan
- * mana pun, berapa pun jarak antar lampunya. Seperempat di tiap ujung menyisakan separuh
- * lompatan sebagai lajur lurus, jadi putarannya selalu rata di atas dan tidak pernah
- * runtuh jadi lancip.
- */
-const ENTRY_RATIO = 0.25;
-
 /** Jarak titik ke ruas garis. Dipakai memutuskan apakah sebuah lampu terlewati. */
 function distanceToSegment(point: Point, a: Point, b: Point): number {
   const dx = b.x - a.x;
@@ -678,38 +668,41 @@ function distanceToSegment(point: Point, a: Point, b: Point): number {
   return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
 }
 
+/** Satu ruas garis yang sudah dipakai kaki lain. */
+type Segment = {a: Point; b: Point};
+
+/** Sedekat apa dua garis dianggap menumpuk, terhadap jarak khas antar lampu. */
+const OVERLAP_RATIO = 0.18;
+
 /**
- * Rute satu kaki, menghindari lampu kaki lain.
+ * Rute satu kaki, menghindari lampu kaki lain **dan** garis kaki lain.
  *
- * Karena papan catur menyelingi lampu sewarna dengan lampu warna lain, sambungan yang
- * bukan diagonal pasti melewati lampu yang bukan miliknya kalau ditarik lurus. Jadi
- * ruas seperti itu harus memutar.
+ * Dua batasan berjalan bersamaan, dan keduanya datang dari papan catur. Karena
+ * lampu sewarna selalu diselingi lampu warna lain, sambungan yang bukan diagonal
+ * pasti melewati lampu yang bukan miliknya kalau ditarik lurus. Dan karena kedua
+ * kaki menempati ruangan yang sama, keduanya cenderung memilih lajur yang sama
+ * lalu bertumpuk — garis yang bertumpuk tidak bisa dibaca sebagai dua sirkuit.
  *
- * **Sisi putaran dan lebar lajurnya ditentukan aturan tetap, bukan penilaian jarak.**
- * Versi sebelumnya menawar tiga rute lalu menilainya dari panjang dan seberapa jauh ia
- * berimpit dengan garis kaki lain — dua ukuran dalam milimeter. Akibatnya bentuk garis
- * ikut berubah begitu jarak antar lampu tidak seragam: dua ruangan yang isinya sama
- * persis tampak bergaya berbeda, dan tidak ada di layar yang menjelaskan kenapa.
- * Sekarang yang memutuskan hanya letak di ruangan dan nomor kaki, jadi bentuknya sama
- * di ruangan mana pun.
- *
- * Jarak masih dipakai untuk satu hal, dan hanya satu: memveto rute yang menembus lampu.
- * Itu bukan selera melainkan syarat — dan di papan catur "ada lampu di antaranya" adalah
- * fakta petak, jadi jawabannya tidak berubah bersama jaraknya.
+ * Karena itu tiap ruas menawar tiga rute: langsung, memutar ke kiri, memutar ke
+ * kanan. Yang menabrak lampu didiskualifikasi lebih dulu; sisanya dinilai dari
+ * seberapa panjang ia berimpit dengan garis yang sudah ada, lalu dari panjangnya
+ * sendiri. Rute langsung menang saat seri — memutar tanpa sebab hanya menambah
+ * belokan yang harus dibaca orang.
  */
 function routeAvoiding(
   points: readonly Point[],
   obstacles: readonly Point[],
+  occupied: readonly Segment[],
   detour: number,
   chamfer: number,
   style: WireStyle,
-  centerX: number,
-  switchIndex: number
+  centerX: number
 ): Point[] {
   if (points.length < 2) return [...points];
 
   const spacing = detour / DETOUR_RATIO;
   const clearance = spacing * CLEARANCE_RATIO;
+  const overlapReach = spacing * OVERLAP_RATIO;
 
   /**
    * Berapa lampu yang terserempet. Diukur pada rute **yang benar-benar digambar**,
@@ -727,14 +720,49 @@ function routeAvoiding(
   }
 
   /**
-   * Lajur tiap kaki berbeda lebarnya, dan itu yang menjaga keduanya tidak bertumpuk.
+   * Seberapa panjang rute ini **berjalan berdampingan** dengan garis yang sudah ada.
    *
-   * Kedua kaki memutar di kolom yang sama — kaki pertama melompati baris 1→3, kaki kedua
-   * 2→4 — jadi kalau lajurnya sama lebar, keduanya berjalan berdampingan di antara baris
-   * 2 dan 3. Dulu itu dihindari dengan menilai impitan dalam milimeter; sekarang cukup
-   * dengan menomori lajurnya, dan hasilnya tidak bergantung jarak sama sekali.
+   * Yang dihitung deretan contoh yang berdekatan berturut-turut, bukan jumlah contoh
+   * yang dekat. Dua garis yang bersilangan pasti punya satu dua contoh yang dekat di
+   * titik potongnya — dan bersilangan justru wajib ada di pola X. Yang tidak boleh
+   * adalah dua garis yang berimpit sepanjang jalan, karena itu terbaca sebagai satu
+   * garis, bukan dua sirkuit.
    */
-  const lane = detour * (1 + switchIndex);
+  function overlap(route: readonly Point[]): number {
+    if (occupied.length === 0) return 0;
+
+    let total = 0;
+    let run = 0;
+
+    for (let index = 1; index < route.length; index++) {
+      const a = route[index - 1]!;
+      const b = route[index]!;
+      const steps = Math.max(2, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / (spacing / 6)));
+
+      for (let step = 0; step <= steps; step++) {
+        const t = step / steps;
+        const point = {x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t};
+
+        if (occupied.some((seg) => distanceToSegment(point, seg.a, seg.b) < overlapReach)) {
+          run++;
+        } else {
+          // Deretan pendek adalah persilangan, bukan impitan.
+          if (run > 3) total += run;
+          run = 0;
+        }
+      }
+    }
+
+    return total + (run > 3 ? run : 0);
+  }
+
+  function length(route: readonly Point[]): number {
+    let total = 0;
+    for (let index = 1; index < route.length; index++) {
+      total += Math.hypot(route[index]!.x - route[index - 1]!.x, route[index]!.y - route[index - 1]!.y);
+    }
+    return total;
+  }
 
   const out: Point[] = [points[0]!];
 
@@ -745,22 +773,33 @@ function routeAvoiding(
     // Silang menyambung diagonal dengan garis lurus; siku selalu tegak-datar.
     const direct = style === 'crossing' ? [from, to] : routeChamfer([from, to], chamfer);
 
+    // Sisi luar ruangan didahulukan saat seri: di luar hampir selalu kosong, sedangkan
+    // ke arah tengah menunggu deretan lampu berikutnya.
+    const outward: -1 | 1 = from.x <= centerX ? -1 : 1;
+    const candidates = [
+      {route: direct, bias: 0},
+      {route: aroundRoute(from, to, detour, outward), bias: 0},
+      {route: aroundRoute(from, to, detour, outward === -1 ? 1 : -1), bias: 0.5}
+    ];
+
     let chosen = direct;
+    let bestScore = Infinity;
 
-    if (hits(direct) > 0) {
-      // Ke arah tengah ruangan lebih dulu. Putaran yang menyusur sisi luar memang hampir
-      // selalu bebas, tapi ia menyapu keluar ruangan dan terbaca sebagai garis yang
-      // pergi jauh tanpa alasan. Sisi luar tetap ada sebagai jalan terakhir.
-      const inward: -1 | 1 = from.x <= centerX ? 1 : -1;
+    for (const candidate of candidates) {
+      const score =
+        hits(candidate.route) * 1e9 +
+        overlap(candidate.route) * 1e4 +
+        length(candidate.route) / spacing +
+        candidate.bias;
 
-      chosen =
-        [
-          aroundRoute(from, to, lane, inward),
-          aroundRoute(from, to, lane, inward === -1 ? 1 : -1)
-        ].find((route) => hits(route) === 0) ?? direct;
+      if (score < bestScore - EPSILON) {
+        bestScore = score;
+        chosen = candidate.route;
+      }
     }
 
     for (let step = 1; step < chosen.length; step++) {
+      occupiedPush(occupied, chosen[step - 1]!, chosen[step]!);
       push(out, chosen[step]!);
     }
   }
@@ -768,19 +807,17 @@ function routeAvoiding(
   return out;
 }
 
+/** `occupied` sengaja tumbuh selama perutean: satu kaki pun tidak boleh menimpa dirinya sendiri. */
+function occupiedPush(occupied: readonly Segment[], a: Point, b: Point) {
+  (occupied as Segment[]).push({a, b});
+}
+
 /**
  * Rute memutar: keluar 45°, menyusur lajur, masuk 45°, lalu mendatar ke tujuan.
  *
- * `side` menentukan lajurnya di kiri atau kanan, dan `detour` seberapa jauh lajurnya
- * dari garis lurus. Keduanya diputuskan `routeAvoiding` lewat aturan tetap — arah
- * tengah lebih dulu, lebar lajur menurut nomor kaki — bukan lewat penilaian jarak.
- *
- * Panjang keluar dan masuknya **sebanding dengan panjang lompatan**, bukan sejauh lebar
- * lajurnya. Dengan jarak tetap, lompatan yang panjangnya kebetulan dua kali lebar lajur
- * membuat kedua titik lajur berimpit lalu runtuh jadi satu: putarannya berubah dari rata
- * di atas jadi lancip. Bentuk yang berbeda untuk sebab yang tidak ada hubungannya dengan
- * apa pun yang terlihat di denah — dan itulah cara jarak antar lampu menyelinap kembali
- * jadi penentu gaya.
+ * `side` menentukan lajurnya di kiri atau kanan. Keduanya selalu ditawarkan, dan
+ * yang memilih adalah penilaian di `routeAvoiding` — sisi yang bebas dari garis
+ * kaki lain yang menang. Itu yang membuat kedua kaki tidak berebut lajur yang sama.
  */
 function aroundRoute(from: Point, to: Point, detour: number, side: -1 | 1): Point[] {
   const vertical = Math.abs(to.y - from.y) >= Math.abs(to.x - from.x);
@@ -789,12 +826,11 @@ function aroundRoute(from: Point, to: Point, detour: number, side: -1 | 1): Poin
     const lane = from.x + side * detour;
     const step = Math.sign(to.y - from.y) || 1;
     const back = Math.sign(to.x - lane) || 1;
-    const inset = Math.abs(to.y - from.y) * ENTRY_RATIO;
 
     return [
       from,
-      {x: lane, y: from.y + step * inset},
-      {x: lane, y: to.y - step * inset},
+      {x: lane, y: from.y + step * detour},
+      {x: lane, y: to.y - step * detour},
       // Masuk kembali 45° lalu mendatar. Tanpa dua titik ini ujungnya jadi satu
       // diagonal panjang yang memotong ruangan — bentuk yang tidak ada di gambar acuan.
       {x: lane + back * detour, y: to.y},
@@ -805,12 +841,11 @@ function aroundRoute(from: Point, to: Point, detour: number, side: -1 | 1): Poin
   const lane = from.y + side * detour;
   const step = Math.sign(to.x - from.x) || 1;
   const back = Math.sign(to.y - lane) || 1;
-  const inset = Math.abs(to.x - from.x) * ENTRY_RATIO;
 
   return [
     from,
-    {x: from.x + step * inset, y: lane},
-    {x: to.x - step * inset, y: lane},
+    {x: from.x + step * detour, y: lane},
+    {x: to.x - step * detour, y: lane},
     {x: to.x, y: lane + back * detour},
     to
   ];
@@ -896,6 +931,11 @@ export function planWiring(
     const bands = bandsOf(room.devices, spacing * BAND_REACH);
     const grid = gridOf(bands, columnsOf(room.devices, spacing * BAND_REACH));
 
+    // Garis yang sudah dirutekan di ruangan ini. Kaki berikutnya membacanya supaya
+    // tidak memilih lajur yang sama lalu bertumpuk — dua garis yang berimpit tidak
+    // bisa dibaca sebagai dua sirkuit yang berbeda.
+    const occupied: Segment[] = [];
+
     // Titik tengah ruangan, dipakai memutuskan arah mana yang "ke luar" saat memutar.
     const centerX =
       room.devices.reduce((sum, device) => sum + device.x_mm, 0) / Math.max(1, room.devices.length);
@@ -918,11 +958,11 @@ export function planWiring(
           // Lampu milik kaki ini sendiri bukan penghalang — garisnya memang harus
           // menyentuhnya. Yang harus dihindari justru lampu warna satunya.
           room.devices.filter((device) => !own.has(device.revit_unique_id)).map(pointOf),
+          occupied,
           spacing * DETOUR_RATIO,
           chamfer,
           options.style,
-          centerX,
-          switchIndex
+          centerX
         )
       });
     }
