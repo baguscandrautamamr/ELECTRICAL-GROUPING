@@ -1,5 +1,6 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
+using Autodesk.Revit.DB.Mechanical;
 using CircuitSync.Core;
 
 namespace CircuitSync.Revit;
@@ -600,7 +601,51 @@ public static class ModelReader
         return UnassignedLevelKey;
     }
 
+    /// <summary>
+    /// Nama ruangan sebuah device: Space lebih dulu, Room sebagai cadangan.
+    /// </summary>
+    /// <remarks>
+    /// <b>Space lebih dulu karena Room hampir selalu kosong di model MEP.</b> Ruangan
+    /// arsitek datang lewat Revit link, dan <see cref="FamilyInstance.Room"/> hanya
+    /// mencari di dokumen instance-nya sendiri — jadi di project seperti itu ia selalu
+    /// null. Bukan melempar, bukan kosong sebagian: null seluruhnya, tanpa satu pun
+    /// petunjuk bahwa yang salah adalah tempat mencarinya.
+    ///
+    /// Space adalah padanan Room di sisi MEP dan hidup di model kita sendiri. Saat
+    /// ditempatkan dengan link arsitek yang Room Bounding-nya aktif, Revit mengisi
+    /// parameter <c>Room Name</c> milik space dari room arsitek itu — jadi namanya sama
+    /// dengan yang dilihat engineer di denah, tanpa diketik ulang.
+    ///
+    /// Urutannya: nama room dari space, lalu room di model sendiri, baru nama space.
+    /// Nama space ditaruh terakhir karena space yang ditempatkan sebelum link-nya siap
+    /// bernama "Space 12" — konsisten, tapi tidak berarti apa-apa bagi yang membacanya,
+    /// dan tidak boleh menutupi nama room yang benar.
+    /// </remarks>
     private static string? RoomNameOf(FamilyInstance instance)
+    {
+        var space = SpaceOf(instance);
+
+        // SPACE_ASSOC_ROOM_NAME, bukan ROOM_NAME: yang kedua nama space itu sendiri,
+        // sedangkan yang pertama nama room arsitek yang diasosiasikan Revit ke space —
+        // itulah yang cocok dengan nama di denah arsitek.
+        return Blank(space is null ? null : Params.String(space, BuiltInParameter.SPACE_ASSOC_ROOM_NAME))
+               ?? RoomOwnName(instance)
+               ?? Blank(space?.Name);
+    }
+
+    private static Space? SpaceOf(FamilyInstance instance)
+    {
+        try
+        {
+            return instance.Space;
+        }
+        catch (Autodesk.Revit.Exceptions.ApplicationException)
+        {
+            return null;
+        }
+    }
+
+    private static string? RoomOwnName(FamilyInstance instance)
     {
         try
         {

@@ -189,7 +189,9 @@ memakai line style tertentu, akan ikut membuang garis yang digambar user sendiri
 | `Document.GetElement(string uniqueId)` | `null` = elemen sudah dihapus; dilaporkan, tidak dilempar. |
 | `Element.LevelId`, `Element.GetTypeId()`, `Element.Category.BuiltInCategory` | |
 | `FamilyInstance.Symbol.Family.Name`, `FamilyInstance.Symbol.Name` | Sumber `family_key`. |
-| `FamilyInstance.Room` | Bisa melempar kalau family tidak punya Room Calculation Point. |
+| `FamilyInstance.Room` | Bisa melempar kalau family tidak punya Room Calculation Point. **Selalu null kalau ruangan ada di Revit link** — ia hanya mencari di dokumen instance-nya sendiri. |
+| `FamilyInstance.Space` | `Autodesk.Revit.DB.Mechanical.Space`, bisa null. Padanan Room di sisi MEP dan hidup di dokumen kita sendiri, jadi ia yang terbaca saat ruangan arsitek datang lewat link. |
+| `BuiltInParameter.SPACE_ASSOC_ROOM_NAME` | Nama room arsitek yang diasosiasikan Revit ke sebuah Space. **Bukan** `ROOM_NAME`, yang justru nama space itu sendiri. |
 | `FamilyInstance.Host` | Fallback level untuk fixture yang di-host ceiling. |
 | `FamilyInstance.SuperComponent` | `Element`, null untuk instance tingkat atas. Dipakai membuang komponen bersarang saat membaca saklar — satu saklar dua gang bisa berisi beberapa komponen di kategori yang sama, dan tiap komponen ikut ter-collect. |
 | `LocationPoint.Point` | Koordinat device. |

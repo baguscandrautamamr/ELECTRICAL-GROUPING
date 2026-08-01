@@ -307,6 +307,42 @@ memuat grant-nya sendiri**, sebaris di sebelah `enable row level security`.
 Uji RLS di `smoke.sql` tidak menangkapnya karena hanya menyentuh tabel dari migrasi
 pertama.
 
+### Nama ruangan datang dari Space, bukan Room
+
+Dilaporkan dari pemakaian: hampir semua ruangan muncul sebagai kiraan di web — "9 ruangan
+dikira-kira dari jarak antar titik" — padahal di Revit ruangannya bernama.
+
+Sebabnya ruangan arsitek datang lewat **Revit link**, dan `FamilyInstance.Room` hanya
+mencari di dokumen instance-nya sendiri. Di model MEP dengan link arsitek ia selalu null.
+Bukan melempar, bukan kosong sebagian: null seluruhnya, dan tidak ada satu pun tanda
+bahwa yang salah adalah tempat mencarinya — kodenya bahkan punya penanganan exception
+yang terlihat meyakinkan untuk sebab yang lain sama sekali.
+
+Akibatnya berantai, dan itu yang membuatnya mahal. Tanpa nama, ruangan jatuh ke
+pengelompokan dari kerapatan; satu lantai gudang pecah jadi sembilan kiraan. Lalu
+`switchCounts` membagikan saklar lewat jarak karena tidak ada nama yang bisa dicocokkan,
+dan satu kiraan kebagian sembilan saklar. Jumlah grouping ikut salah. Semua gejala itu
+berasal dari satu pembacaan yang mencari di dokumen yang keliru.
+
+Jawabannya **Space**, padanan Room di sisi MEP. Space hidup di model kita sendiri, jadi
+tidak bergantung link termuat atau tidak, dan tidak butuh transformasi koordinat. Saat
+ditempatkan dengan link yang Room Bounding-nya aktif, Revit mengisi parameter
+`SPACE_ASSOC_ROOM_NAME` milik space dari room arsitek — namanya sama tanpa diketik ulang.
+
+`SPACE_ASSOC_ROOM_NAME`, bukan `ROOM_NAME`: yang kedua nama space itu sendiri.
+
+Urutan yang dipakai: nama room dari space, lalu room di model sendiri, baru nama space.
+Nama space ditaruh terakhir karena space yang ditempatkan sebelum link-nya siap bernama
+"Space 12" — konsisten untuk pengelompokan, tapi tidak berarti apa-apa bagi yang
+membacanya, dan tidak boleh menutupi nama room yang benar.
+
+Jalan lain yang tidak diambil: membaca Room langsung dari dokumen link lewat
+`RevitLinkInstance.GetLinkDocument()` lalu `Room.IsPointInRoom` dengan titik yang
+ditransformasi ke koordinat link. Itu bekerja tanpa menuntut user menempatkan space, tapi
+menambah ketergantungan pada link yang termuat, pada transformasi yang benar, dan pada
+fase yang cocok — tiga hal yang bisa gagal diam-diam. Space menuntut satu langkah dari
+user dan menghapus ketiganya.
+
 ### Level device yang di-host harus disimpulkan
 
 Device yang diletakkan di lantai punya `LevelId` sendiri. Yang di-host di dinding
