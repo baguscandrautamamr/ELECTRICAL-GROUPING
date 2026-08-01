@@ -812,136 +812,52 @@ yang sedang dihindari: putarannya dinilai menyerempet, tidak ada kandidat yang l
 dan rutenya kembali menembus lampu. Gejalanya menyesatkan — kelihatan seperti
 penghindarannya tidak jalan, padahal ambangnya yang saling meniadakan.
 
-### Bersilangan bukan bertumpuk
+### Gaya garis diputuskan aturan tetap, bukan penilaian jarak
 
-Penilaian impitan menghitung **deretan** contoh yang berdekatan berturut-turut, bukan
-jumlah contoh yang berdekatan. Dua garis yang bersilangan selalu punya satu dua contoh
-yang dekat di titik potongnya, dan bersilangan justru wajib ada di pola X — menghukumnya
-membuat kedua kaki menghindari bentuk yang benar. Yang tidak boleh adalah dua garis yang
-berjalan berdampingan sepanjang jalan, karena itu terbaca sebagai satu garis.
+Dilaporkan dari pemakaian: dua ruangan dengan jumlah titik dan device yang sama tampak
+bergaya berbeda — yang satu putarannya di sisi dalam, yang lain menyapu keluar menyusur
+sisi kanan ruangan. Yang diminta: gaya harus seragam, berapa pun jarak antar lampunya.
 
-Kaki dirutekan berurutan, dan kaki berikutnya membaca jalur yang sudah dipakai. Tiap
-ruas menawar tiga rute — langsung, memutar kiri, memutar kanan — lalu yang paling sedikit
-berimpit yang menang. Tanpa itu kedua kaki memilih lajur yang sama dan bertumpuk.
+Diukur dulu, dan hasilnya memisahkan dua dugaan: dua ruangan yang **benar-benar identik**
+sudah menghasilkan garis yang identik, bahkan saat lampunya digeser acak ±150 mm. Jadi
+tidak ada ketidakstabilan acak. Yang menggeser gaya adalah **jarak yang tidak seragam**.
 
-Sisa yang belum bersih: di ruangan 3x4 dan 5x4 masih ada sekitar dua sampai empat kali
-jarak antar lampu di mana kedua kaki berjalan berdampingan. Keduanya memang kehabisan
-lajur bebas di situ; memperbaikinya berarti menggeser lajur per ruas, bukan memilih
-salah satu dari dua sisi.
+Sebabnya pemilihan rute masih diputuskan lewat penilaian: tiap ruas menawar tiga rute —
+langsung, memutar kiri, memutar kanan — lalu dinilai dari panjangnya dan dari seberapa
+jauh ia berimpit dengan garis kaki lain. Keduanya ukuran dalam milimeter, jadi begitu
+kolom tidak sama lebar atau baris lebih rapat daripada kolom, pemenangnya berganti. Sisi
+luar pun didahulukan saat seri, dan itu yang menghasilkan sapuan keluar ruangan.
 
-### Setiap select yang tumbuh bersama model harus berhalaman
+Ini sebetulnya pelanggaran prinsip yang sudah ditulis di repo ini sendiri — urutan
+sambungan sudah dipindah ke ruang petak justru supaya lebar ruangan tidak mengubah
+bentuknya. Peruteannya tertinggal di milimeter.
 
-PostgREST memotong setiap select di seribu baris. Tanpa error, tanpa tanda di jawabannya —
-yang terlihat hanyalah halaman yang isinya kurang.
+Sekarang yang memutuskan hanya dua hal, keduanya bukan ukuran: **arah tengah ruangan lebih
+dulu**, dan **lebar lajur menurut nomor kaki**. Jarak tinggal dipakai untuk satu hal, dan
+hanya satu: memveto rute yang menembus lampu. Itu syarat, bukan selera — dan di papan
+catur "ada lampu di antaranya" adalah fakta petak, jadi jawabannya tidak berubah bersama
+jaraknya.
 
-`allDevicesOfKind` sudah menangani itu untuk tabel `devices` sejak awal, tapi hanya untuk
-tabel itu. Yang tertinggal justru yang paling mudah melampaui seribu: `layout_devices`
-berisi satu baris per device yang tampak di sebuah denah, dan satu denah gudang bisa
-berisi lebih dari seribu lampu. Akibatnya keanggotaan terpotong, `deviceRows` menyaring
-dengan daftar yang kurang, dan denah kehilangan lampu — persis kegagalan yang
-`allDevicesOfKind` dibuat untuk mencegah, satu query di sebelahnya.
+Penilaian impitan dibuang seluruhnya, beserta plumbing `occupied` yang melayaninya. Yang
+menggantikannya lebih sederhana dan tidak bergantung jarak: kaki pertama memutar di lajur
+selebar satu satuan, kaki kedua dua satuan. Keduanya memutar di kolom yang sama — kaki
+pertama melompati baris 1→3, kaki kedua 2→4 — jadi tanpa penomoran lajur itu keduanya
+berjalan berdampingan di antara baris 2 dan 3.
 
-Sekarang halamannya satu helper di `web/lib/supabase/pages.ts`, dipakai semua tabel yang
-tumbuh seiring besar model: device, keanggotaan layout, saklar, dan circuit. Panel dan
-override simbol tidak lewat sana — jumlahnya dibatasi bentuk project, bukan besar model.
+Panjang keluar-masuk putaran juga diubah jadi **pecahan dari panjang lompatan**, bukan
+jarak tetap. Dengan jarak tetap, lompatan yang panjangnya kebetulan dua kali lebar lajur
+membuat kedua titik lajur berimpit lalu runtuh jadi satu: putarannya berubah dari rata di
+atas jadi lancip. Bentuk berbeda untuk sebab yang tidak ada hubungannya dengan apa pun di
+denah — jarak antar lampu menyelinap kembali jadi penentu gaya lewat pintu belakang.
 
-Helper itu **mewajibkan** `order` dari pemanggilnya. Tanpa urutan yang pasti, halaman
-kedua tidak dijamin melanjutkan halaman pertama: yang hilang bukan seribu baris terakhir
-melainkan baris sembarang, dan itu jauh lebih sulit dikenali daripada potongan di ujung.
+Diukur setelahnya, dengan tanda tangan **gaya** dan bukan koordinat: urutan lampu yang
+disambung, tiap lompatan memutar atau tidak, dan ke sisi mana. Lima ruangan berjarak
+berbeda-beda — kolom seragam, baris lebih rapat, kolom 900/1800, 1800/900, sampai
+2400/1000 dengan baris 800 — kelimanya menghasilkan gaya yang sama persis.
 
-### Saklar dibatasi per view, bukan per lantai
-
-`layout_devices` membuat isi denah ditentukan view Revit. Saklarnya tertinggal: web masih
-menyaring `lighting_devices` dengan `level_key`.
-
-Akibatnya kebalikan dari yang diperbaiki `layout_devices`, dan lebih sunyi. Satu lantai
-dengan denah lighting dan denah emergency/exit punya `level_key` yang sama, jadi kedua
-halaman menerima seluruh saklar lantai itu. Tiap saklar lalu diberikan ke kumpulan lampu
-terdekat yang ada di halaman itu — sehingga denah emergency dipecah oleh saklar yang
-mengendalikan lampu biasa, dan sebaliknya. Device yang salah tempat akan terlihat sebagai
-simbol yang tidak semestinya ada; saklar yang salah tempat tidak terlihat sama sekali, ia
-hanya mengubah jumlah grouping.
-
-Tabelnya tidak bisa digabung ke `layout_devices`: foreign key di sana menunjuk `devices`,
-sedangkan saklar hidup di `lighting_devices`. Jadi `layout_lighting_devices`, dengan
-cascade dua arah yang sama.
-
-Satu hal yang ikut terbetulkan: peringatan "model belum membawa data saklar" dulu menyala
-kalau **setiap ruangan** di denah itu nol saklar. Kalimat itu salah untuk denah yang
-saklarnya memang nol — denah emergency, misalnya, yang kategori Lighting Devices-nya tidak
-tampak di view. Sekarang dua keadaan itu dua kalimat: yang satu tentang model yang belum
-ditarik ulang, yang lain tentang denah ini yang batas grouping-nya jatuh ke kerapatan.
-
-### Line style datang dari model, dan garis dikirim dari pilihan
-
-Dropdown line style di web dulu selalu kosong dan dimatikan, dengan komentar bahwa belum
-ada tabel yang membawanya. Sekarang ada: `line_styles`, isinya subcategory kategori
-`OST_Lines` — yang di Revit muncul di dialog Line Styles.
-
-Yang disimpan sebagai identitas adalah `UniqueId` GraphicsStyle-nya, bukan namanya. Nama
-line style bisa diubah user kapan saja, dan add-in harus tetap menemukan style yang sama
-saat menggambar.
-
-Pengirimannya jalur ketiga di `sync_jobs`, `direction = 'wiring'`, di samping `apply` dan
-`snapshot`. Sengaja bukan circuit: garis wiring tidak punya panel, tidak punya nomor, dan
-tidak menyambungkan apa pun secara listrik. Memaksanya lewat tabel `circuits` berarti
-mengarang panel untuk sesuatu yang tidak butuh panel.
-
-Payload-nya polyline yang titiknya sudah selesai dihitung di `web/lib/wiring.ts` dan
-dipakai add-in apa adanya. Itu memegang janji yang sudah tertulis di kepala berkas itu:
-yang tergambar di Revit bukan mirip pratinjau, melainkan angka yang identik. Karena itu
-juga algoritmanya tidak boleh dikembarkan di C#.
-
-**Detail curve, bukan model curve.** Garis wiring adalah anotasi denah: ia hidup di satu
-view, ikut skalanya, dan tidak boleh muncul di view lain atau di 3D.
-
-**Yang dikirim adalah kaki yang utuh terpilih.** Kaki yang cuma sebagian terpilih
-dilewati, bukan dipotong. Garis yang dipotong di tengah akan tergambar di Revit sebagai
-sesuatu yang tidak pernah dilihat siapa pun di pratinjau — dan itu melanggar janji di
-atas. Jumlah yang dilewati disebutkan di panel, karena diam-diam melewatinya adalah
-bagaimana "kok cuma sebagian yang terkirim" jadi pertanyaan tanpa jawaban.
-
-**Mengirim garis berarti mengganti, bukan menambah.** Kiriman kedua untuk denah yang sama
-adalah keadaan biasa, bukan jarang: begitu ada electrical device yang berubah, wiring di
-web ikut berubah dan user mengirimnya lagi. Versi pertama hanya bisa menambah, jadi
-garisnya dobel — yang lama tetap ada, yang baru menumpuk di atasnya.
-
-Yang dibutuhkan add-in adalah jawaban atas satu pertanyaan: garis mana di denah ini yang
-dibuat CircuitSync? Dua jalan pintas keduanya salah. Menghapus semua detail curve di view
-akan membuang garis yang digambar user sendiri; menghapus berdasarkan line style pun sama,
-karena style itu dipakai user juga. Jadi yang dipakai catatan, bukan tebakan: tabel
-`wiring_curves` menyimpan `UniqueId` tiap garis, ditulis add-in setelah menggambar,
-diganti seluruhnya setiap kiriman.
-
-Hapus dan gambar hidup di satu `TransactionGroup` yang sama, lalu `Assimilate()`. Kalau
-dipisah, sekali Ctrl+Z hanya membuang garis baru dan meninggalkan denah tanpa garis sama
-sekali — lebih buruk daripada keadaan sebelum mengirim.
-
-Catatan ditulis **sebelum** job ditandai selesai. Kalau urutannya dibalik dan penulisan
-catatan gagal, job sudah tampak berhasil di web sementara garis yang baru digambar tidak
-tercatat — dan kiriman berikutnya menumpuk lagi, tanpa sebab yang terlihat.
-
-Garis yang sudah tidak ada di model dilewati tanpa keluhan: user boleh menghapusnya
-sendiri, dan hasil akhirnya tetap sama. Yang disebutkan di web adalah jumlah ruas yang
-sedang hidup di Revit untuk denah itu, supaya "apakah ini mengganti atau menumpuk" terbaca
-di sebelah tombolnya alih-alih dipelajari dari model yang garisnya dobel.
-
-Ruas yang lebih pendek daripada `Application.ShortCurveTolerance` dibuang sebelum
-digambar. Toleransi itu dibaca dari Revit, bukan ditulis sebagai angka: menebaknya salah
-di satu sisi — terlalu kecil menghasilkan exception, terlalu besar membuang ruas yang sah.
-Ambang `EPSILON` di `wiring.ts` jauh di bawah toleransi Revit, jadi penyaringan di web
-saja tidak cukup.
-
-### Yang masih harus diuji manual di Revit 2025
-
-`WiringApplier` menaruh detail curve di elevasi `ViewPlan.GenLevel.ProjectElevation`.
-Detail curve harus sebidang dengan view-nya, dan denah yang levelnya bukan di elevasi nol
-akan menolak kurva di Z=0 — itu alasan elevasinya diambil dari level, bukan dikira nol.
-Yang belum terbukti adalah apakah Revit 2025 menerima bidang itu apa adanya untuk setiap
-ViewPlan, termasuk ceiling plan dan denah yang view range-nya digeser.
-
-Compile-nya dijamin CI; perilakunya tidak. Kalau `NewDetailCurve` menolak dengan keluhan
-soal bidang, yang perlu diubah hanya elevasi di `PointOf` — bukan bentuk garisnya.
+Membandingkan koordinat mentah tidak akan menjawab apa pun, dan percobaan pertama saya
+salah di situ: posisi lampu ditentukan model, jadi menormalkannya dengan kotak pembatas
+ikut membandingkan modelnya, bukan gayanya.
 
 ---
 
