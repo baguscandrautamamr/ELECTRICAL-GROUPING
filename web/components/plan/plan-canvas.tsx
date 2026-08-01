@@ -6,7 +6,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {Device} from '@/lib/contract';
 import {isSelectable} from '@/lib/contract';
 import {STATUS_STYLE, geometryFor, switchStyleFor, symbolFor} from '@/lib/symbols';
-import type {WireRun} from '@/lib/wiring';
+import {medianNearestGap, type WireRun} from '@/lib/wiring';
 
 type Bounds = {minX: number; minY: number; width: number; height: number};
 
@@ -97,6 +97,11 @@ function useLayout(devices: Device[], crop?: Crop) {
     const xs = devices.map((device) => device.x_mm);
     const ys = devices.map((device) => device.y_mm);
 
+    // Jarak khas antar titik, dipinjam dari `lib/wiring` alih-alih dihitung ulang di
+    // sini: keduanya harus menjawab hal yang sama, dan dua hitungan yang mestinya sama
+    // adalah dua hitungan yang bisa berbeda.
+    const points = devices.map((device) => ({x: device.x_mm, y: device.y_mm}));
+
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
@@ -114,6 +119,7 @@ function useLayout(devices: Device[], crop?: Crop) {
       return {
         bounds: region,
         radius: densityRadius(devices, Math.max(Math.max(region.width, region.height) / 90, 60)),
+        spacing: medianNearestGap(points) ?? Math.max(region.width, region.height) / 20,
         flipY,
         place: (device: Device) => ({x: device.x_mm, y: flipY(device.y_mm)})
       };
@@ -137,6 +143,7 @@ function useLayout(devices: Device[], crop?: Crop) {
     return {
       bounds,
       radius: densityRadius(devices, Math.max(Math.max(bounds.width, bounds.height) / 90, 60)),
+      spacing: medianNearestGap(points) ?? Math.max(bounds.width, bounds.height) / 20,
       flipY,
       place: (device: Device) => ({x: device.x_mm, y: flipY(device.y_mm)})
     };
@@ -167,7 +174,7 @@ export function PlanCanvas({
   crop?: Crop;
 }) {
   const t = useTranslations('plan');
-  const {bounds, radius, flipY, place} = useLayout(devices, crop);
+  const {bounds, radius, spacing, flipY, place} = useLayout(devices, crop);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [marquee, setMarquee] = useState<{x1: number; y1: number; x2: number; y2: number} | null>(null);
   const additive = useRef(false);
@@ -341,7 +348,10 @@ export function PlanCanvas({
   function click(at: {x: number; y: number}) {
     // Sasaran tidak pernah lebih kecil dari sepetak jempol, seberapa pun jauh
     // denah dilihat.
-    const reach = Math.max(radius * 1.8, userPerPixel() * 11);
+    // Mengikuti ukuran simbol yang benar-benar digambar, bukan ukuran dasarnya:
+    // area klik yang tetap besar saat simbolnya mengecil berarti menangkap device
+    // yang tidak terlihat di bawah kursor.
+    const reach = Math.max(r * 1.8, userPerPixel() * 11);
     const hits = devices
       .filter(isSelectable)
       .map((device) => {
@@ -366,6 +376,35 @@ export function PlanCanvas({
 
     onSelect([hits[index]!.device.revit_unique_id], additive.current ? 'add' : 'toggle');
   }
+
+  /**
+   * Perbandingan viewBox sekarang terhadap viewBox saat denah dimuat penuh.
+   *
+   * Ukuran gambar disimpan dalam koordinat model, sedangkan viewBox mengecil saat
+   * di-zoom — jadi simbol, ketebalan garis, dan nomor circuit semuanya ikut membesar
+   * dan mengecil bersama zoom. Yang dibutuhkan kebalikannya: zoom memperbesar
+   * **denahnya**, bukan gambarnya. Mengalikan ukuran dengan faktor ini membuat
+   * semuanya tampil sama besar di layar berapa pun zoom-nya — cara yang sama yang
+   * sudah dipakai kotak seleksi (`current.width / 400`).
+   */
+  const viewScale = current.width / bounds.width;
+
+  /** Jari-jari simbol dalam koordinat model, sudah dikoreksi supaya tetap di layar. */
+  const r = radius * viewScale;
+
+  /**
+   * Nomor circuit hanya digambar kalau ada ruang untuknya.
+   *
+   * Nomor selebar `(E)/15` butuh beberapa kali lebar simbol. Di denah rapat yang
+   * dimuat penuh, semuanya bertumpuk jadi bubur dan tidak satu pun terbaca — dan
+   * mengecilkan tulisannya sampai pas bukan jalan keluar, itu hanya membuatnya tidak
+   * terbaca dengan cara yang lebih rapi. Jadi nomornya muncul saat zoom membuka ruang
+   * untuknya, dan sampai itu terjadi denahnya tetap bersih.
+   *
+   * Lebar satu nomor kira-kira sebanyak hurufnya dikali `r`: tingginya `1.8 r` dan
+   * lebar rata-rata satu huruf sekitar 0,55 tingginya.
+   */
+  const labelFits = (text: string) => text.length * r <= spacing;
 
   const zoomed = current !== bounds;
 
@@ -424,10 +463,10 @@ export function PlanCanvas({
                   points={run.vertices.map((vertex) => `${vertex.x},${flipY(vertex.y)}`).join(' ')}
                   fill="none"
                   stroke={wire.color}
-                  strokeWidth={radius / 3}
+                  strokeWidth={r / 3}
                   strokeLinejoin="round"
                   strokeLinecap="round"
-                  strokeDasharray={wire.dash ? scaleDash(wire.dash, radius) : undefined}
+                  strokeDasharray={wire.dash ? scaleDash(wire.dash, r) : undefined}
                   opacity={0.85}
                 />
               );
@@ -439,7 +478,7 @@ export function PlanCanvas({
           const point = place(device);
           const style = STATUS_STYLE[device.status];
           const shape = symbolFor(device.family_key, symbolOverrides);
-          const geometry = geometryFor(shape, radius);
+          const geometry = geometryFor(shape, r);
           const chosen = selected.has(device.revit_unique_id);
           const selectable = isSelectable(device);
           const stroke = style.color;
@@ -473,11 +512,11 @@ export function PlanCanvas({
               }}
             >
               {chosen ? (
-                <circle r={radius * 1.85} fill="color-mix(in oklab, var(--accent) 22%, transparent)" />
+                <circle r={r * 1.85} fill="color-mix(in oklab, var(--accent) 22%, transparent)" />
               ) : null}
 
               {ringed ? (
-                <circle r={radius * 2.1} fill="none" stroke="var(--accent)" strokeWidth={radius / 4} />
+                <circle r={r * 2.1} fill="none" stroke="var(--accent)" strokeWidth={r / 4} />
               ) : null}
 
               {geometry.kind === 'circle' ? (
@@ -485,37 +524,37 @@ export function PlanCanvas({
                   r={geometry.r}
                   fill={fill}
                   stroke={stroke}
-                  strokeWidth={radius / 3.5}
-                  strokeDasharray={style.dash ? scaleDash(style.dash, radius) : undefined}
+                  strokeWidth={r / 3.5}
+                  strokeDasharray={style.dash ? scaleDash(style.dash, r) : undefined}
                 />
               ) : (
                 <polygon
                   points={geometry.points}
                   fill={fill}
                   stroke={stroke}
-                  strokeWidth={radius / 3.5}
-                  strokeDasharray={style.dash ? scaleDash(style.dash, radius) : undefined}
+                  strokeWidth={r / 3.5}
+                  strokeDasharray={style.dash ? scaleDash(style.dash, r) : undefined}
                 />
               )}
 
-              {style.pip ? <circle r={radius / 3} fill={stroke} /> : null}
+              {style.pip ? <circle r={r / 3} fill={stroke} /> : null}
 
               {style.struck ? (
-                <line x1={-radius} y1={radius} x2={radius} y2={-radius} stroke={stroke} strokeWidth={radius / 4} />
+                <line x1={-r} y1={r} x2={r} y2={-r} stroke={stroke} strokeWidth={r / 4} />
               ) : null}
 
               {/* Nomor circuit dari Revit. Digariskan dengan warna latar lebih dulu
                   (paint-order: stroke) supaya tetap terbaca saat jatuh di atas garis
                   grid atau simbol tetangga. */}
-              {device.circuit_number ? (
+              {device.circuit_number && labelFits(device.circuit_number) ? (
                 <text
-                  x={radius * 1.5}
-                  y={-radius * 1.2}
-                  fontSize={radius * 1.8}
+                  x={r * 1.5}
+                  y={-r * 1.2}
+                  fontSize={r * 1.8}
                   fontWeight={600}
                   fill="var(--ink-muted)"
                   stroke="var(--surface)"
-                  strokeWidth={radius / 3}
+                  strokeWidth={r / 3}
                   paintOrder="stroke"
                   className="pointer-events-none"
                 >
