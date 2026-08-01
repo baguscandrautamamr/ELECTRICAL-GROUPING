@@ -21,21 +21,16 @@
   },
   "auth": {
     "heading": "Masuk ke CircuitSync",
-    "subheading": "Akses lewat undangan. Pakai email yang sudah diundang admin — kami mengirim tautan masuk, atau Anda bisa memakai kata sandi.",
+    "subheading": "Akses lewat undangan. Masuk dengan email dan kata sandi yang diberikan admin.",
     "email": "Email",
     "password": "Kata sandi",
-    "modeLink": "Tautan email",
-    "modePassword": "Kata sandi",
-    "sendLink": "Kirim tautan masuk",
     "signIn": "Masuk",
-    "linkSent": "Tautan masuk terkirim ke {email}. Buka dari perangkat ini agar sesinya nyambung.",
     "needEmail": "Isi email dulu",
     "needPassword": "Isi kata sandi dulu",
     "wrongCredentials": "Email atau kata sandi tidak cocok",
     "rateLimited": "Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.",
     "generic": "Masuk tidak bisa diselesaikan. Periksa email dan kata sandi lalu coba lagi.",
-    "callbackFailed": "Tautan itu sudah kedaluwarsa atau pernah dipakai. Minta tautan baru.",
-    "notInvited": "Email itu belum diundang. Minta admin mengundangnya dulu, lalu coba lagi."
+    "callbackFailed": "Tautan itu sudah kedaluwarsa atau pernah dipakai. Minta tautan baru."
   },
   "projects": {
     "heading": "Project",
