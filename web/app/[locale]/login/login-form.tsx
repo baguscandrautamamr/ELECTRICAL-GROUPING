@@ -30,6 +30,15 @@ export function LoginForm({callbackFailed}: {callbackFailed: boolean}) {
     const lower = message.toLowerCase();
     if (lower.includes('invalid login credentials')) return t('wrongCredentials');
     if (lower.includes('rate limit') || lower.includes('too many')) return t('rateLimited');
+
+    // Akses lewat undangan, jadi email yang belum diundang ditolak Supabase dengan
+    // "Signups not allowed for otp". Itu bukan kesalahan yang bisa diperbaiki user
+    // dengan mencoba lagi — yang perlu dilakukan minta admin mengundang, dan itu yang
+    // pantas disebut alih-alih pesan umum.
+    if (lower.includes('signups not allowed') || lower.includes('signup is disabled')) {
+      return t('notInvited');
+    }
+
     return t('generic');
   }
 
@@ -57,7 +66,13 @@ export function LoginForm({callbackFailed}: {callbackFailed: boolean}) {
         () =>
           supabase.auth.signInWithOtp({
             email: email.trim(),
-            options: {emailRedirectTo: `${siteUrl()}/auth/callback?next=/${locale}/projects`}
+            options: {
+              emailRedirectTo: `${siteUrl()}/auth/callback?next=/${locale}/projects`,
+              // Akses hanya lewat undangan admin. Tanpa ini tautan masuk membuat akun
+              // untuk email apa pun yang mengetiknya — pendaftaran sendiri lewat pintu
+              // belakang, dan tidak ada satu pun layar yang menyebutkannya.
+              shouldCreateUser: false
+            }
           }),
         () => ({tone: 'ok', text: t('linkSent', {email: email.trim()})})
       );
@@ -76,24 +91,6 @@ export function LoginForm({callbackFailed}: {callbackFailed: boolean}) {
         router.replace(`/${locale}/projects`);
         return null;
       }
-    );
-  }
-
-  function signUp() {
-    if (email.trim().length === 0 || password.length === 0) {
-      setFeedback({tone: 'danger', text: password.length === 0 ? t('needPassword') : t('needEmail')});
-      return;
-    }
-
-    const supabase = createClient();
-    void run(
-      () =>
-        supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {emailRedirectTo: `${siteUrl()}/auth/callback?next=/${locale}/projects`}
-        }),
-      () => ({tone: 'ok', text: t('signUpSent', {email: email.trim()})})
     );
   }
 
@@ -148,16 +145,14 @@ export function LoginForm({callbackFailed}: {callbackFailed: boolean}) {
 
       {feedback ? <Notice tone={feedback.tone}>{feedback.text}</Notice> : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" tone="primary" disabled={busy}>
-          {mode === 'link' ? t('sendLink') : t('signIn')}
-        </Button>
-        {mode === 'password' ? (
-          <Button type="button" tone="quiet" disabled={busy} onClick={signUp}>
-            {t('signUp')}
-          </Button>
-        ) : null}
-      </div>
+      {/*
+        Tidak ada tombol daftar. Akun dibuat admin lewat Supabase Auth, dan satu-satunya
+        aksi di halaman ini adalah masuk — kontrol yang tidak akan pernah berhasil lebih
+        buruk daripada kontrol yang tidak ada.
+      */}
+      <Button type="submit" tone="primary" disabled={busy}>
+        {mode === 'link' ? t('sendLink') : t('signIn')}
+      </Button>
     </form>
   );
 }
