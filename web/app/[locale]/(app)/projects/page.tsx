@@ -1,12 +1,11 @@
-import {ChevronRight} from 'lucide-react';
 import {getFormatter, getTranslations} from 'next-intl/server';
-import {Badge, Card, CardHeader, Empty} from '@/components/ui';
+import {Card, CardHeader, Empty} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
-import {Link} from '@/i18n/navigation';
 import type {Project} from '@/lib/contract';
 import {classifyError} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
 import {NewProjectForm} from './new-project-form';
+import {ProjectRow} from './project-row';
 
 export default async function ProjectsPage() {
   const t = await getTranslations('projects');
@@ -39,23 +38,14 @@ export default async function ProjectsPage() {
         ) : (
           <ul className="card divide-y divide-hairline overflow-hidden p-0">
             {projects.map((project) => (
-              <li key={project.id}>
-                <Link
-                  href={`/projects/${project.id}`}
-                  className="flex items-center gap-4 px-5 py-4 transition-colors duration-200 hover:bg-sunken"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-semibold">{project.name}</p>
-                    <p className="mt-0.5 text-[12px] text-muted">
-                      {t('openedAt', {
-                        when: format.relativeTime(new Date(project.updated_at))
-                      })}
-                    </p>
-                  </div>
-                  <Badge tone="accent">{t('open')}</Badge>
-                  <ChevronRight className="size-4 shrink-0 text-muted" aria-hidden />
-                </Link>
-              </li>
+              <ProjectRow
+                key={project.id}
+                id={project.id}
+                name={project.name}
+                updatedLabel={t('openedAt', {
+                  when: format.relativeTime(new Date(project.updated_at))
+                })}
+              />
             ))}
           </ul>
         )}

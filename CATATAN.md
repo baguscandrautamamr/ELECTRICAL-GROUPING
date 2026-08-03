@@ -1001,6 +1001,37 @@ di satu sisi — terlalu kecil menghasilkan exception, terlalu besar membuang ru
 Ambang `EPSILON` di `wiring.ts` jauh di bawah toleransi Revit, jadi penyaringan di web
 saja tidak cukup.
 
+### Menghapus project: RLS menolak dengan diam, jadi baris terhapus ikut dihitung
+
+Tombol hapus di daftar project bersandar pada dua hal yang sudah ada di migrasi pertama
+dan tidak perlu ditambah: policy `projects_delete` yang hanya melepas baris milik owner,
+dan `on delete cascade` di setiap tabel turunan. Karena itu `deleteProject` mengirim satu
+`delete` saja. Menghapus isinya satu per satu dari web justru bisa berhenti setengah
+jalan dan meninggalkan project yang device-nya sudah hilang tapi circuit-nya belum.
+
+Yang tidak terbaca dari kode adalah kenapa hasilnya dihitung. DELETE yang tidak lolos
+policy **bukan** error: PostgREST tetap menjawab 200, hanya tanpa baris yang terhapus.
+Kalau hanya `error` yang diperiksa, member biasa akan melihat project lenyap dari layar
+lalu menemukannya kembali setelah halaman dimuat ulang. Jadi yang dipakai sebagai bukti
+adalah `select()` di belakang `delete()`: nol baris berarti ditolak, bukan berhasil.
+
+Project dibaca dulu sebelum dihapus supaya dua kegagalan yang bentuknya sama — nol baris
+karena bukan owner, dan nol baris karena project-nya memang sudah tidak ada — bisa
+dijawab dengan kalimat yang berbeda. Tanpa itu keduanya jatuh ke satu pesan yang tidak
+menyebutkan apa pun yang bisa dilakukan user.
+
+**Barisnya berhenti jadi satu `<Link>` utuh.** Tombol di dalam anchor bukan HTML yang
+sah, dan menyarangkannya membuat satu klik menghapus sekaligus berpindah halaman. Yang
+menggantikan area klik selebar baris adalah overlay `::after` milik Link; tombol hapus
+diberi posisi sendiri supaya duduk di atas overlay itu. Konsekuensinya baris itu kini
+client component — konfirmasi dan pesan gagal keduanya state, dan keduanya milik satu
+baris saja. Waktu "diperbarui" tetap diformat di server dan masuk sebagai teks jadi,
+supaya format tanggal tidak ikut berpindah ke browser.
+
+Konfirmasinya dua langkah di tempat, bukan dialog. Menghapus project berarti menghapus
+seluruh device, panel, circuit, layout, dan garis wiring-nya sekaligus, dan itu tidak
+bisa dikembalikan — kalimat itu yang muncul di langkah kedua, bukan sesudahnya.
+
 ### Yang masih harus diuji manual di Revit 2025
 
 `WiringApplier` menaruh detail curve di elevasi `ViewPlan.GenLevel.ProjectElevation`.

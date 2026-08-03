@@ -43,7 +43,13 @@
     "emptyBody": "Create one here, then bind it from the Revit add-in. You can also create it from the add-in.",
     "openedAt": "Updated {when}",
     "deviceCount": "{count, plural, one {# device} other {# devices}}",
-    "open": "Open"
+    "open": "Open",
+    "deleteLabel": "Delete project {name}",
+    "deleteConfirm": "Delete",
+    "deleteCancel": "Cancel",
+    "deleteWarning": "Deleting this project also removes every device, panel, circuit, layout, and wiring line in it. This cannot be undone.",
+    "deleteOwnerOnly": "Only the project owner can delete it.",
+    "deleteGone": "That project no longer exists."
   },
   "project": {
     "levels": "Levels",
