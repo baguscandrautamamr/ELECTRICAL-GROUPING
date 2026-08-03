@@ -43,7 +43,13 @@
     "emptyBody": "Buat satu di sini, lalu ikat dari add-in Revit. Bisa juga dibuat langsung dari add-in.",
     "openedAt": "Diperbarui {when}",
     "deviceCount": "{count, plural, other {# device}}",
-    "open": "Buka"
+    "open": "Buka",
+    "deleteLabel": "Hapus project {name}",
+    "deleteConfirm": "Hapus",
+    "deleteCancel": "Batal",
+    "deleteWarning": "Menghapus project ini ikut menghapus seluruh device, panel, circuit, layout, dan garis wiring di dalamnya. Tidak bisa dikembalikan.",
+    "deleteOwnerOnly": "Hanya owner project yang bisa menghapusnya.",
+    "deleteGone": "Project itu sudah tidak ada."
   },
   "project": {
     "levels": "Lantai",
