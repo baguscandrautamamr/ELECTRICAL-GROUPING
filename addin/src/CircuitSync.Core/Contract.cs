@@ -74,6 +74,23 @@ public sealed record ProjectRow
     [JsonPropertyName("updated_at")] public DateTimeOffset? UpdatedAt { get; init; }
 }
 
+/// <summary>
+/// Project yang disembunyikan dari daftar di web, per user.
+/// </summary>
+/// <remarks>
+/// Add-in tidak pernah menulis tabel ini, dan tidak perlu membacanya. Bentuknya dicerminkan
+/// di sini karena kontrak data wajib sama di tiga tempat — dan karena add-in <b>ikut
+/// membatalkannya tanpa tahu</b>: trigger di database membuang barisnya begitu satu baris
+/// <c>sync_jobs</c> berarah <see cref="SyncDirection.Snapshot"/> masuk, yaitu setiap kali
+/// tarikan model dikirim. Menghapus catatan tarikan itu berarti mematikan fitur ini.
+/// </remarks>
+public sealed record ProjectHiddenRow
+{
+    [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }
+    [JsonPropertyName("user_id")] public Guid UserId { get; init; }
+    [JsonPropertyName("hidden_at")] public DateTimeOffset? HiddenAt { get; init; }
+}
+
 public sealed record LevelRow
 {
     [JsonPropertyName("project_id")] public Guid ProjectId { get; init; }

@@ -26,6 +26,20 @@ export type Project = {
   updated_at: string;
 };
 
+/**
+ * Project yang disembunyikan dari daftar, per user.
+ *
+ * Bukan penghapusan: isi model tetap utuh di database dan di Revit. Barisnya dibuang lagi
+ * oleh trigger begitu add-in mengirim tarikan model berikutnya, jadi project yang masih
+ * dikerjakan muncul kembali dengan sendirinya — lihat
+ * `supabase/migrations/20260803000000_project_hidden.sql`.
+ */
+export type ProjectHidden = {
+  project_id: string;
+  user_id: string;
+  hidden_at: string;
+};
+
 export type Level = {
   project_id: string;
   level_key: string;

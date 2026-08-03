@@ -44,12 +44,14 @@
     "openedAt": "Diperbarui {when}",
     "deviceCount": "{count, plural, other {# device}}",
     "open": "Buka",
-    "deleteLabel": "Hapus project {name}",
-    "deleteConfirm": "Hapus",
-    "deleteCancel": "Batal",
-    "deleteWarning": "Menghapus project ini ikut menghapus seluruh device, panel, circuit, layout, dan garis wiring di dalamnya. Tidak bisa dikembalikan.",
-    "deleteOwnerOnly": "Hanya owner project yang bisa menghapusnya.",
-    "deleteGone": "Project itu sudah tidak ada."
+    "hideLabel": "Sembunyikan project {name}",
+    "hideConfirm": "Sembunyikan",
+    "hideCancel": "Batal",
+    "hideExplainer": "Project ini hilang dari daftar Anda saja. Isinya tidak dihapus, dan model Revit-nya tidak disentuh — begitu add-in mengirim model ini lagi, project-nya muncul kembali.",
+    "hiddenCount": "{count, plural, other {# project disembunyikan}}",
+    "showHidden": "Tampilkan lagi",
+    "allHiddenTitle": "Semua project di akun ini sedang disembunyikan.",
+    "allHiddenBody": "Tampilkan lagi lewat tautan di bawah, atau kirim model dari add-in Revit — project yang dikirim ulang muncul kembali dengan sendirinya."
   },
   "project": {
     "levels": "Lantai",

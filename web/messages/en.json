@@ -44,12 +44,14 @@
     "openedAt": "Updated {when}",
     "deviceCount": "{count, plural, one {# device} other {# devices}}",
     "open": "Open",
-    "deleteLabel": "Delete project {name}",
-    "deleteConfirm": "Delete",
-    "deleteCancel": "Cancel",
-    "deleteWarning": "Deleting this project also removes every device, panel, circuit, layout, and wiring line in it. This cannot be undone.",
-    "deleteOwnerOnly": "Only the project owner can delete it.",
-    "deleteGone": "That project no longer exists."
+    "hideLabel": "Hide project {name}",
+    "hideConfirm": "Hide",
+    "hideCancel": "Cancel",
+    "hideExplainer": "This project leaves your list only. Nothing is deleted, and the Revit model is untouched — it comes back as soon as the add-in sends this model again.",
+    "hiddenCount": "{count, plural, one {# project hidden} other {# projects hidden}}",
+    "showHidden": "Show again",
+    "allHiddenTitle": "Every project on this account is hidden right now.",
+    "allHiddenBody": "Show them again with the link below, or send a model from the Revit add-in — a project that gets sent again comes back on its own."
   },
   "project": {
     "levels": "Levels",

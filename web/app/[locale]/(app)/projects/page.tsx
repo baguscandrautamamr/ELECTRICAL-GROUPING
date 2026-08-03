@@ -2,8 +2,9 @@ import {getFormatter, getTranslations} from 'next-intl/server';
 import {Card, CardHeader, Empty} from '@/components/ui';
 import {SetupNeeded} from '@/components/setup-needed';
 import type {Project} from '@/lib/contract';
-import {classifyError} from '@/lib/supabase/errors';
+import {classifyError, optional} from '@/lib/supabase/errors';
 import {createClient} from '@/lib/supabase/server';
+import {HiddenNote} from './hidden-note';
 import {NewProjectForm} from './new-project-form';
 import {ProjectRow} from './project-row';
 
@@ -23,7 +24,14 @@ export default async function ProjectsPage() {
   const problem = classifyError(error);
   if (problem) return <SetupNeeded problem={problem} />;
 
-  const projects = (data ?? []) as Project[];
+  // `optional`: tabelnya datang dari migrasi yang lebih baru, jadi database yang belum
+  // menerimanya harus kembali ke perilaku sebelum fitur ini ada — daftar penuh — bukan
+  // memasang layar "database belum disiapkan" di atas database yang sebenarnya sehat.
+  const hidden = optional(await supabase.from('project_hidden').select('project_id'));
+  const hiddenIds = new Set((hidden ?? []).map((row) => row.project_id));
+
+  const all = (data ?? []) as Project[];
+  const projects = all.filter((project) => !hiddenIds.has(project.id));
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -34,7 +42,13 @@ export default async function ProjectsPage() {
         </div>
 
         {projects.length === 0 ? (
-          <Empty title={t('emptyTitle')} body={t('emptyBody')} />
+          // Akun yang project-nya ada tapi semuanya disembunyikan bukan akun baru, dan
+          // mengajaknya membuat project justru menjauhkannya dari yang sudah dia punya.
+          hiddenIds.size > 0 ? (
+            <Empty title={t('allHiddenTitle')} body={t('allHiddenBody')} />
+          ) : (
+            <Empty title={t('emptyTitle')} body={t('emptyBody')} />
+          )
         ) : (
           <ul className="card divide-y divide-hairline overflow-hidden p-0">
             {projects.map((project) => (
@@ -49,6 +63,8 @@ export default async function ProjectsPage() {
             ))}
           </ul>
         )}
+
+        <HiddenNote count={hiddenIds.size} />
       </div>
 
       <Card className="h-fit">

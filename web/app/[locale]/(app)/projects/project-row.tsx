@@ -1,25 +1,25 @@
 'use client';
 
-import {ChevronRight, Trash2} from 'lucide-react';
+import {ChevronRight, EyeOff} from 'lucide-react';
 import {useTranslations} from 'next-intl';
 import {useRouter} from 'next/navigation';
 import {useState, useTransition} from 'react';
 import {Badge, Button, Notice} from '@/components/ui';
 import {Link} from '@/i18n/navigation';
-import {deleteProject} from './actions';
+import {hideProject} from './actions';
 
 /**
  * Satu baris di daftar project.
  *
- * Client component karena hapus butuh langkah konfirmasi dan tempat menaruh pesan
- * gagal — keduanya state, dan keduanya milik satu baris saja. Waktu "diperbarui"
- * tetap diformat di server dan masuk sebagai teks jadi, supaya format tanggal tidak
- * ikut berpindah ke browser.
+ * Client component karena menyembunyikan butuh langkah konfirmasi dan tempat menaruh pesan
+ * gagal — keduanya state, dan keduanya milik satu baris saja. Waktu "diperbarui" tetap
+ * diformat di server dan masuk sebagai teks jadi, supaya format tanggal tidak ikut
+ * berpindah ke browser.
  *
- * Barisnya tidak lagi satu <Link> utuh. Tombol di dalam anchor bukan HTML yang sah,
- * dan menyarangkannya membuat satu klik menghapus sekaligus berpindah halaman. Yang
- * menggantikan area klik selebar baris adalah overlay `::after` milik Link; tombol
- * hapus diberi posisi sendiri supaya duduk di atas overlay itu, bukan di bawahnya.
+ * Barisnya tidak lagi satu <Link> utuh. Tombol di dalam anchor bukan HTML yang sah, dan
+ * menyarangkannya membuat satu klik menyembunyikan sekaligus berpindah halaman. Yang
+ * menggantikan area klik selebar baris adalah overlay `::after` milik Link; tombolnya
+ * diberi posisi sendiri supaya duduk di atas overlay itu, bukan di bawahnya.
  */
 export function ProjectRow({id, name, updatedLabel}: {id: string; name: string; updatedLabel: string}) {
   const t = useTranslations('projects');
@@ -30,29 +30,21 @@ export function ProjectRow({id, name, updatedLabel}: {id: string; name: string; 
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function remove() {
+  function hide() {
     setFailure(null);
 
     startTransition(async () => {
-      const result = await deleteProject(id);
+      const result = await hideProject(id);
       setConfirming(false);
 
       if (result.ok) {
-        // Barisnya hilang dari daftar — itu jawaban yang lebih jelas daripada pesan
-        // yang muncul di tempat yang baru saja dikosongkan.
+        // Barisnya hilang dari daftar — itu jawaban yang lebih jelas daripada pesan yang
+        // muncul di tempat yang baru saja dikosongkan.
         router.refresh();
         return;
       }
 
-      setFailure(
-        result.reason === 'forbidden'
-          ? t('deleteOwnerOnly')
-          : result.reason === 'gone'
-            ? t('deleteGone')
-            : result.reason === 'schema'
-              ? errors('schemaMissingBody')
-              : errors('unknown')
-      );
+      setFailure(result.reason === 'schema' ? errors('schemaMissingBody') : errors('unknown'));
     });
   }
 
@@ -68,25 +60,25 @@ export function ProjectRow({id, name, updatedLabel}: {id: string; name: string; 
 
         {confirming ? (
           <div className="relative z-10 flex items-center gap-1">
-            <Button type="button" tone="danger" onClick={remove} disabled={pending}>
-              {t('deleteConfirm')}
+            <Button type="button" tone="secondary" onClick={hide} disabled={pending}>
+              {t('hideConfirm')}
             </Button>
             <Button type="button" tone="quiet" onClick={() => setConfirming(false)} disabled={pending}>
-              {t('deleteCancel')}
+              {t('hideCancel')}
             </Button>
           </div>
         ) : (
           <Button
             type="button"
-            tone="danger"
+            tone="quiet"
             className="relative z-10 px-2"
-            aria-label={t('deleteLabel', {name})}
+            aria-label={t('hideLabel', {name})}
             onClick={() => {
               setFailure(null);
               setConfirming(true);
             }}
           >
-            <Trash2 className="size-4" aria-hidden />
+            <EyeOff className="size-4" aria-hidden />
           </Button>
         )}
 
@@ -95,7 +87,7 @@ export function ProjectRow({id, name, updatedLabel}: {id: string; name: string; 
       </div>
 
       {confirming ? (
-        <p className="px-5 pb-4 text-[12px] leading-relaxed text-muted">{t('deleteWarning')}</p>
+        <p className="px-5 pb-4 text-[12px] leading-relaxed text-muted">{t('hideExplainer')}</p>
       ) : null}
 
       {failure ? (

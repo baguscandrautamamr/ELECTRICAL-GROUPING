@@ -29,20 +29,17 @@ export async function createProject(name: string): Promise<ActionResult> {
   return {ok: true, name: trimmed};
 }
 
-export type DeleteResult =
-  | {ok: true; name: string}
-  | {ok: false; reason: 'forbidden' | 'gone' | 'schema' | 'failed'};
+export type HideResult = {ok: true} | {ok: false; reason: 'schema' | 'failed'};
 
 /**
- * Menghapus satu project beserta seluruh isinya.
+ * Menyembunyikan satu project dari daftar milik user yang sedang masuk.
  *
- * Tidak ada penghapusan bertahap di sini: setiap tabel turunan menunjuk
- * `projects (id) on delete cascade`, jadi device, panel, circuit, layout, saklar,
- * line style, garis wiring, dan antrean job-nya ikut lepas dalam satu perintah.
- * Menghapusnya satu per satu dari sini justru bisa berhenti setengah jalan dan
- * meninggalkan project yang isinya tinggal separuh.
+ * Tidak ada baris model yang dihapus, dan model Revit-nya tidak disentuh. Yang ditulis
+ * hanya satu baris `project_hidden` — pilihan tampilan, bukan penghapusan. Trigger
+ * `sync_jobs_unhide` membuangnya lagi begitu add-in mengirim tarikan model berikutnya,
+ * jadi project yang masih dikerjakan muncul kembali dengan sendirinya.
  */
-export async function deleteProject(id: string): Promise<DeleteResult> {
+export async function hideProject(id: string): Promise<HideResult> {
   const supabase = await createClient();
   const {
     data: {user}
@@ -50,27 +47,40 @@ export async function deleteProject(id: string): Promise<DeleteResult> {
 
   if (!user) return {ok: false, reason: 'failed'};
 
-  // Dibaca dulu supaya dua kegagalan yang bentuknya sama bisa dibedakan di layar —
-  // lihat komentar di bawah.
-  const {data: existing, error: readError} = await supabase
-    .from('projects')
-    .select('name')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (readError) return {ok: false, reason: classifyError(readError) === 'schema' ? 'schema' : 'failed'};
-  if (!existing) return {ok: false, reason: 'gone'};
-
-  const {data, error} = await supabase.from('projects').delete().eq('id', id).select('id');
+  // Upsert, bukan insert: menyembunyikan sesuatu yang sudah tersembunyi bukan kesalahan
+  // yang perlu dilaporkan — dua tab yang terbuka bersamaan sudah cukup untuk membuatnya
+  // terjadi, dan hasil akhirnya sama persis dengan yang diminta user.
+  const {error} = await supabase
+    .from('project_hidden')
+    .upsert({project_id: id, user_id: user.id}, {onConflict: 'project_id,user_id'});
 
   if (error) return {ok: false, reason: classifyError(error) === 'schema' ? 'schema' : 'failed'};
 
-  // RLS menolak dengan diam. Policy `projects_delete` hanya melepas baris milik owner,
-  // dan baris yang tidak lolos policy membuat DELETE tetap dijawab 200 tanpa menghapus
-  // apa pun. Tanpa `select()` di atas, member biasa akan melihat project "terhapus"
-  // lalu menemukannya kembali setelah halaman dimuat ulang.
-  if (!data || data.length === 0) return {ok: false, reason: 'forbidden'};
+  revalidatePath('/[locale]/(app)/projects', 'page');
+  return {ok: true};
+}
+
+/**
+ * Menampilkan kembali semua project yang disembunyikan user ini.
+ *
+ * Jalan keluar tanpa harus membuka Revit. Tanpa ini, satu klik salah hanya bisa dibatalkan
+ * dengan mengirim tarikan model dari add-in — pintu satu arah untuk aksi yang justru
+ * sengaja dibuat murah.
+ */
+export async function showHiddenProjects(): Promise<HideResult> {
+  const supabase = await createClient();
+  const {
+    data: {user}
+  } = await supabase.auth.getUser();
+
+  if (!user) return {ok: false, reason: 'failed'};
+
+  // RLS sudah mengurung penghapusan ini pada baris milik user sendiri; `eq` di sini
+  // menyebutkannya sekali lagi supaya maksudnya terbaca dari kodenya.
+  const {error} = await supabase.from('project_hidden').delete().eq('user_id', user.id);
+
+  if (error) return {ok: false, reason: classifyError(error) === 'schema' ? 'schema' : 'failed'};
 
   revalidatePath('/[locale]/(app)/projects', 'page');
-  return {ok: true, name: existing.name};
+  return {ok: true};
 }

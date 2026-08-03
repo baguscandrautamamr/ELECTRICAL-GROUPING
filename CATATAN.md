@@ -1001,36 +1001,59 @@ di satu sisi — terlalu kecil menghasilkan exception, terlalu besar membuang ru
 Ambang `EPSILON` di `wiring.ts` jauh di bawah toleransi Revit, jadi penyaringan di web
 saja tidak cukup.
 
-### Menghapus project: RLS menolak dengan diam, jadi baris terhapus ikut dihitung
+### Project disembunyikan, tidak dihapus — dan tarikan model membatalkannya
 
-Tombol hapus di daftar project bersandar pada dua hal yang sudah ada di migrasi pertama
-dan tidak perlu ditambah: policy `projects_delete` yang hanya melepas baris milik owner,
-dan `on delete cascade` di setiap tabel turunan. Karena itu `deleteProject` mengirim satu
-`delete` saja. Menghapus isinya satu per satu dari web justru bisa berhenti setengah
-jalan dan meninggalkan project yang device-nya sudah hilang tapi circuit-nya belum.
+Daftar project yang penuh perlu jalan keluar, tapi **hapus** adalah jawaban yang salah
+untuk daftar ini. Project mewakili satu model Revit, dan model itu hidup di luar jangkauan
+web: menghapus barisnya membuang riwayat circuit dan wiring yang tidak bisa dibuat ulang
+dari model, sementara tarikan berikutnya dari add-in akan membuat project itu muncul lagi
+sebagai project baru yang kosong. Yang tampak seperti "hapus" akhirnya cuma jadi "hapus
+isinya" — kerugian tanpa hasil yang diminta.
 
-Yang tidak terbaca dari kode adalah kenapa hasilnya dihitung. DELETE yang tidak lolos
-policy **bukan** error: PostgREST tetap menjawab 200, hanya tanpa baris yang terhapus.
-Kalau hanya `error` yang diperiksa, member biasa akan melihat project lenyap dari layar
-lalu menemukannya kembali setelah halaman dimuat ulang. Jadi yang dipakai sebagai bukti
-adalah `select()` di belakang `delete()`: nol baris berarti ditolak, bukan berhasil.
+Jadi yang disimpan adalah satu keputusan tampilan di `project_hidden`: jangan tampilkan
+project ini di daftar saya. Tidak ada satu pun baris model yang hilang, dan model Revit-nya
+tidak disentuh.
 
-Project dibaca dulu sebelum dihapus supaya dua kegagalan yang bentuknya sama — nol baris
-karena bukan owner, dan nol baris karena project-nya memang sudah tidak ada — bisa
-dijawab dengan kalimat yang berbeda. Tanpa itu keduanya jatuh ke satu pesan yang tidak
-menyebutkan apa pun yang bisa dilakukan user.
+**Yang membatalkan penyembunyian adalah sinyal yang sudah ada.** Add-in mencatat setiap
+tarikan model sebagai satu baris `sync_jobs` berarah `snapshot`. Trigger `sync_jobs_unhide`
+menumpang di situ, jadi fitur ini tidak menambah satu baris pun di sisi add-in — dan
+konsekuensinya perlu diingat sebelum menyentuh pencatatan itu: membuang insert `sync_jobs`
+di akhir `PushSnapshotAsync` akan mematikan fitur ini tanpa jejak di sisi web.
 
-**Barisnya berhenti jadi satu `<Link>` utuh.** Tombol di dalam anchor bukan HTML yang
-sah, dan menyarangkannya membuat satu klik menghapus sekaligus berpindah halaman. Yang
-menggantikan area klik selebar baris adalah overlay `::after` milik Link; tombol hapus
-diberi posisi sendiri supaya duduk di atas overlay itu. Konsekuensinya baris itu kini
-client component — konfirmasi dan pesan gagal keduanya state, dan keduanya milik satu
-baris saja. Waktu "diperbarui" tetap diformat di server dan masuk sebagai teks jadi,
-supaya format tanggal tidak ikut berpindah ke browser.
+Hanya `snapshot` yang membatalkan. `apply` dan `wiring` berjalan dari web ke Revit dan bisa
+datang dari project yang memang sengaja disembunyikan; yang menandakan "model ini hidup
+lagi" cuma kiriman dari sisi Revit.
 
-Konfirmasinya dua langkah di tempat, bukan dialog. Menghapus project berarti menghapus
-seluruh device, panel, circuit, layout, dan garis wiring-nya sekaligus, dan itu tidak
-bisa dikembalikan — kalimat itu yang muncul di langkah kedua, bukan sesudahnya.
+**Per user, bukan per project.** Menyembunyikan adalah preferensi tampilan, dan preferensi
+satu orang tidak boleh menghilangkan project dari layar rekan satu timnya. Kalau disimpan
+sebagai kolom di `projects`, satu klik owner membuat editor kehilangan halaman kerjanya
+tanpa sebab yang bisa dilihat.
+
+Konsekuensinya trigger itu `security definer`. Policy `project_hidden` mengurung setiap
+orang pada barisnya sendiri, jadi tanpa `security definer` tarikan model hanya akan
+memunculkan kembali project bagi orang yang kebetulan menjalankan add-in — bukan bagi
+semua yang menyembunyikannya.
+
+Bacanya lewat `optional()`, bukan query biasa. Tabelnya datang dari migrasi yang lebih
+baru, dan database yang belum menerimanya harus kembali ke perilaku sebelum fitur ini ada
+— daftar penuh — bukan memasang layar "database belum disiapkan" di atas database yang
+sebenarnya sehat.
+
+Ada `showHiddenProjects()` yang mengosongkan seluruh penyembunyian user, dan barisnya
+muncul di bawah daftar begitu ada yang tersembunyi. Tanpa itu, satu klik salah hanya bisa
+dibatalkan dengan membuka Revit dan mengirim model — pintu satu arah untuk aksi yang
+justru sengaja dibuat murah karena tidak menghapus apa pun.
+
+Layar kosong dibedakan: akun yang project-nya ada tapi semuanya disembunyikan bukan akun
+baru, dan mengajaknya membuat project justru menjauhkannya dari yang sudah dia punya.
+
+**Barisnya berhenti jadi satu `<Link>` utuh.** Tombol di dalam anchor bukan HTML yang sah,
+dan menyarangkannya membuat satu klik menyembunyikan sekaligus berpindah halaman. Yang
+menggantikan area klik selebar baris adalah overlay `::after` milik Link; tombolnya diberi
+posisi sendiri supaya duduk di atas overlay itu. Konsekuensinya baris itu kini client
+component — konfirmasi dan pesan gagal keduanya state, dan keduanya milik satu baris saja.
+Waktu "diperbarui" tetap diformat di server dan masuk sebagai teks jadi, supaya format
+tanggal tidak ikut berpindah ke browser.
 
 ### Yang masih harus diuji manual di Revit 2025
 
